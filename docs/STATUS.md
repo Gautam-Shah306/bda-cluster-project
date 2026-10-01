@@ -6,18 +6,19 @@ Single source for the current state. Read this first every session. Each member 
 
 | Area | State | Last updated | By |
 |---|---|---|---|
-| GitHub repo | CREATED 2026-10-01 | 2026-10-01 | Gautam |
-| Reference analysis | DONE, awaiting team review: `docs/REFERENCE_ANALYSIS.md` (parts A-E merged) | 2026-10-01 | Gautam |
-| Topic / dataset / stack | OPEN | 2026-09-30 | - |
-| Architectural changes | OPEN (depends on the reference analysis) | 2026-09-30 | - |
+| GitHub repo | CREATED 2026-10-01 (confirm all 3 collaborators added) | 2026-10-02 | Gautam |
+| Reference analysis | DONE, awaiting team review: `docs/REFERENCE_ANALYSIS.md` | 2026-10-01 | Gautam |
+| Topic / dataset | DECIDED: same as reference (D-009) | 2026-10-02 | Gautam |
+| Architectural change | DECIDED in direction: run on Hadoop (D-009). Stack and cluster type still OPEN | 2026-10-02 | Gautam |
+| Build order | Code first, early cluster smoke test (D-010) | 2026-10-02 | Gautam |
 | Cluster (1 master + 2 workers) | NOT STARTED | 2026-09-30 | - |
 
 ## Gautam
 
-- **Working on now:** review `REFERENCE_ANALYSIS.md`, then the reuse / reimplement / change table.
-- **Last session (2026-10-01):** reference analysis completed by Claude reading the repo directly (Antigravity attempts were too shallow); parts A-E merged.
-- **Broken / blocked:** nothing yet.
-- **Next:** review analysis with Claude, create the repo, add all 3 collaborators, commit docs (separate commits, from own account).
+- **Working on now:** reuse / reimplement / change table for components C01-C27, and the keep/fix list for known reference bugs.
+- **Last session (2026-10-02):** agreed the target (same system on Hadoop) and build order; logged D-009 and D-010; fixed the D-008 row; reviewed repo state.
+- **Broken / blocked:** `dataset/` is git-ignored, so how teammates obtain the jobs and courses CSVs is undocumented. D-005 and D-006 still need team OK.
+- **Next:** commit these doc updates (separate commits, own account); confirm collaborators; decide stack (#3) and cluster type (#5); fill `PROJECT_CONTEXT.md` and `ARCHITECTURE.md`.
 
 ## Member 2
 
