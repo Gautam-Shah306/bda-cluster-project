@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Appended (out of template)
+.env
+dataset/*
+!dataset/.gitkeep
+output/*
+!output/.gitkeep
