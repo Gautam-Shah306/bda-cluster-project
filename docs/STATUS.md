@@ -18,13 +18,15 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Analytics: dashboard stats and top-N | DONE (local mode) | 2026-10-02 | Gautam |
 | Analytics: trends and skill gap | DONE (local mode) | 2026-10-02 | Gautam |
 | Analytics: vulnerability index | DONE (local mode) | 2026-10-02 | Gautam |
+| Analytics: reskilling lookup | DONE (local mode) | 2026-10-02 | Gautam |
+| Serving layer: Mongo + loader | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** added `src/analytics/vulnerability_index.py` (role risks, region risks, top-100 table). Full independent cross-check matches. Logged D-016 and D-017.
+- **Last session (2026-10-02):** Mongo container (docker-compose, port set via MONGO_HOST_PORT), `src/common/mongo_client.py`, loader `src/analytics/load_results_to_mongo.py` loading all 16 analytics outputs into `res_*` collections. Verified: counts, content, order, indexes, idempotence.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** reskilling lookup tables (skill index for courses/jobs), course skill enrichment job, then Mongo loader.
+- **Next:** backend API (`src/api/`). Needs the bug keep/fix decisions listed below.
 
 ## Member 2
 
