@@ -13,13 +13,14 @@ Single source for the current state. Read this first every session. Each member 
 | Build order | Code first, early cluster smoke test (D-010) | 2026-10-02 | Gautam |
 | Cluster (1 master + 2 workers) | NOT STARTED. Type decided: Docker Compose (D-011) | 2026-10-02 | Gautam |
 Shared foundation (config, logging, Spark factory) | DONE, local mode verified | 2026-10-02 | Gautam |
+| Processing: jobs | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** built the shared foundation: `config/pipeline.yaml`, `src/common/{config,logging_setup,spark_session}.py`, `requirements.txt`, `scripts/smoke_local.py`. Local smoke test passes (Python 3.11.9 venv, PySpark 3.5.9, Java 8).
+- **Last session (2026-10-02):** added `src/processing/process_jobs.py`: historical jobs CSV -> `processed/jobs` Parquet (skills array, city, title, ai_mentions). Verified in local mode: 22,979 rows, cities and empty-skills counts match the reference analysis.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** place the jobs and courses CSVs in `dataset/raw/jobs/` and `dataset/raw/courses/`, then build the jobs-processing job.
+- **Next:** `process_courses` (courses CSV -> `processed/courses`), then the analytics jobs.
 
 ## Member 2
 
