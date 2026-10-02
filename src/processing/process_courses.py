@@ -5,7 +5,7 @@ from pathlib import Path
 # Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from pyspark.sql import functions as F
+from pyspark.sql import functions as F, Window
 from pyspark.sql.types import ArrayType, StringType
 
 from src.common.config import get_path
@@ -39,6 +39,10 @@ def main() -> None:
                 sys.exit(1)
             raise
             
+        # Add course_id: 0-based position in CSV (D-018)
+        window_spec = Window.orderBy(F.monotonically_increasing_id())
+        df = df.withColumn("course_id", (F.row_number().over(window_spec) - 1).cast("long"))
+            
         # 1. Fill nulls with ""
         df = df.fillna("")
         
@@ -59,6 +63,10 @@ def main() -> None:
                          .withColumn("skill_tags_lower", F.expr("transform(skill_tags, x -> lower(x))")) \
                          .withColumn("duration_weeks", duration_expr) \
                          .withColumn("syllabus_weeks", syllabus_expr)
+                         
+        # Make course_id the first column
+        cols = ["course_id"] + [c for c in processed_df.columns if c != "course_id"]
+        processed_df = processed_df.select(*cols)
                          
         logger.info("Writing output to: %s", output_uri)
         processed_df.write.mode("overwrite").parquet(output_uri)
