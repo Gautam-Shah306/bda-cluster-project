@@ -18,7 +18,7 @@ Auxiliary service containers (not counted as cluster nodes):
 | `hive-postgres` | PostgreSQL 15, Hive metastore DB | 5432 |
 | `hive-metastore` | Hive 3.1.3 metastore (Java 8) | 9083 |
 | `hive-server2` | Hive 3.1.3 HiveServer2 (Java 8) | 10000, UI 10002 |
-| `mongo` | MongoDB 7.0: users + precomputed results (hosting OPEN: container vs Atlas) | 27017 |
+| `mongo` | MongoDB 7.0: users + precomputed results (hosting OPEN: container vs Atlas) | Configurable host port (27018 on the first machine) |
 
 Application processes (outside the cluster): FastAPI on 8000, React/Vite on 5173.
 
