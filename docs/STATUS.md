@@ -12,13 +12,14 @@ Single source for the current state. Read this first every session. Each member 
 | Architectural change | DECIDED: run on Hadoop (D-009); stack locked (D-011): PySpark, HDFS + Parquet, Hive, MongoDB serving, Docker Compose | 2026-10-02 | Gautam |
 | Build order | Code first, early cluster smoke test (D-010) | 2026-10-02 | Gautam |
 | Cluster (1 master + 2 workers) | NOT STARTED. Type decided: Docker Compose (D-011) | 2026-10-02 | Gautam |
+Shared foundation (config, logging, Spark factory) | DONE, local mode verified | 2026-10-02 | Gautam |
 
 ## Gautam
 
-- **Working on now:** reuse / reimplement / change table for components C01-C27, and the keep/fix list for known reference bugs.
-- **Last session (2026-10-02):** agreed the target (same system on Hadoop) and build order; logged D-009 and D-010; fixed the D-008 row; reviewed repo state.
-- **Broken / blocked:** `dataset/` is git-ignored, so how teammates obtain the jobs and courses CSVs is undocumented. D-005 and D-006 still need team OK.
-- **Next:** commit these doc updates (separate commits, own account); confirm collaborators; decide stack (#3) and cluster type (#5); fill `PROJECT_CONTEXT.md` and `ARCHITECTURE.md`.
+- **Working on now:** next component (see below).
+- **Last session (2026-10-02):** built the shared foundation: `config/pipeline.yaml`, `src/common/{config,logging_setup,spark_session}.py`, `requirements.txt`, `scripts/smoke_local.py`. Local smoke test passes (Python 3.11.9 venv, PySpark 3.5.9, Java 8).
+- **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
+- **Next:** place the jobs and courses CSVs in `dataset/raw/jobs/` and `dataset/raw/courses/`, then build the jobs-processing job.
 
 ## Member 2
 
