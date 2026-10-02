@@ -20,9 +20,9 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** added `src/analytics/dashboard_stats.py`: stats, top cities/roles, industry distribution, city-roles and role-cities, written as Parquet under `analytics/`. Verified in local mode: counts match the reference analysis.
+- **Last session (2026-10-02):** added `row_id` (CSV position) to `processed/jobs` (D-015), verified against an independent CSV read (30/30 positions). Earlier today: `process_courses`, `dashboard_stats`.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** add a row-order column to `processed/jobs` (needed for skill trends), then the hiring-trends / skill-trends / skill-gap analytics job.
+- **Next:** `src/analytics/trends_and_gap.py` (hiring trends, trend years, skill trends, skill gap).
 
 ## Member 2
 

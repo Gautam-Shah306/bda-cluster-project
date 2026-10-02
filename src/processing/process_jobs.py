@@ -5,7 +5,7 @@ from pathlib import Path
 # Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from pyspark.sql import functions as F
+from pyspark.sql import functions as F, Window
 
 from src.common.config import get_path
 from src.common.logging_setup import get_logger
@@ -38,6 +38,11 @@ def main() -> None:
                 sys.exit(1)
             raise
             
+        # Add row_id (D-015): 0-based position in source CSV.
+        # Computed before any filters. A single global window is acceptable at this data size.
+        window_spec = Window.orderBy(F.monotonically_increasing_id())
+        df = df.withColumn("row_id", F.row_number().over(window_spec) - 1)
+        
         # 1. Replace nulls with ""
         df = df.fillna("")
         
@@ -69,11 +74,16 @@ def main() -> None:
                          .withColumn("title", title_expr) \
                          .withColumn("ai_mentions", ai_mentions_expr)
                          
+        # Put row_id as the first column
+        cols = ["row_id"] + [c for c in processed_df.columns if c != "row_id"]
+        processed_df = processed_df.select(cols)
+                         
         logger.info("Writing output to: %s", output_uri)
         processed_df.write.mode("overwrite").parquet(output_uri)
         
-        # Log row count
-        count = df.count()
+        # Log row count from written output
+        written_df = spark.read.parquet(output_uri)
+        count = written_df.count()
         logger.info("Successfully processed and wrote %d rows.", count)
         
     except SystemExit:
