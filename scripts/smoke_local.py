@@ -2,12 +2,14 @@
 import os
 import shutil
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 # Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.common.config import get_path, get_config
+from src.common.config import get_path, get_config, get_mode
 from src.common.logging_setup import get_logger
 from src.common.spark_session import get_spark
 
@@ -15,6 +17,11 @@ logger = get_logger("smoke_local")
 
 def main() -> None:
     """Run the smoke test."""
+    if get_mode() != "local":
+        logger.error("FAIL: This smoke test can only be run in local mode.")
+        sys.exit(1)
+        
+    spark = None
     try:
         config = get_config()
         logger.info("Loaded config.")
@@ -48,13 +55,15 @@ def main() -> None:
         logger.error("FAIL: Exception occurred: %s", e)
         sys.exit(1)
     finally:
-        if 'spark' in locals():
+        if spark is not None:
             spark.stop()
         
         # Clean up smoke_test directory
         try:
-            repo_root = Path(__file__).resolve().parent.parent
-            smoke_test_dir = repo_root / "dataset" / "smoke_test"
+            smoke_uri = get_path("smoke_test")
+            parsed = urllib.parse.urlparse(smoke_uri)
+            smoke_test_dir = Path(urllib.request.url2pathname(parsed.path))
+            
             if smoke_test_dir.exists():
                 shutil.rmtree(smoke_test_dir)
                 logger.info("Cleaned up smoke_test directory.")

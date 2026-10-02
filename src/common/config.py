@@ -15,16 +15,21 @@ def get_config() -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+def get_mode() -> str:
+    """Returns the validated active mode."""
+    config = get_config()
+    mode = os.environ.get("PIPELINE_MODE", config.get("mode", "local"))
+    if mode not in ("local", "cluster"):
+        raise ValueError(f"Invalid mode: {mode}")
+    return mode
+
 def get_path(name: str) -> str:
     """Returns the full URI/path for a named data location in the active mode."""
     config = get_config()
-    mode = os.environ.get("PIPELINE_MODE", config.get("mode", "local"))
+    mode = get_mode()
     
-    if mode not in ("local", "cluster"):
-        raise ValueError(f"Invalid mode: {mode}")
-        
     paths = config.get("paths", {})
-    if name not in paths and name != "smoke_test":
+    if name not in paths:
         raise KeyError(f"Unknown path name: {name}")
         
     sub_path = paths.get(name, name)

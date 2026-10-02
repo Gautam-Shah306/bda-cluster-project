@@ -2,7 +2,7 @@
 import os
 import sys
 from pyspark.sql import SparkSession
-from src.common.config import get_config
+from src.common.config import get_config, get_mode
 from src.common.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ def get_spark(app_name: str | None = None) -> SparkSession:
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
     
     config = get_config()
-    mode = os.environ.get("PIPELINE_MODE", config.get("mode", "local"))
+    mode = get_mode()
     
     name = app_name or config.get("spark", {}).get("app_name", "SkillsMirage")
     

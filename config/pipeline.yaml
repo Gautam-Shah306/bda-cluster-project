@@ -16,5 +16,6 @@ paths:
   processed/jobs: processed/jobs
   processed/courses: processed/courses
   analytics: analytics
+  smoke_test: smoke_test
 hive:
   database: skills_mirage
