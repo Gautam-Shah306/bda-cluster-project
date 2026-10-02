@@ -25,9 +25,9 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** backend API skeleton in `src/api/`: app, JWT security (secret from .env, hash never returned), auth routes (signup/login/me), all dashboard routes except latest-jobs. Verified against Parquet per endpoint. Logged D-021.
+- **Last session (2026-10-02):** `src/analytics/serving_extras.py` (latest 50 jobs with raw skills string, full courses), loader extended to 18 `res_*` collections. Verified against independent CSV reads.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** serving extras (latest jobs, full courses) into Mongo, then `/dashboard/latest-jobs` and `/courses*` routes, then worker and reskilling routes with Gemini, then the chatbot.
+- **Next:** `/dashboard/latest-jobs` and `/courses*` routes, then worker and reskilling routes with Gemini, then the chatbot.
 
 ## Member 2
 

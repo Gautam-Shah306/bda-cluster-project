@@ -60,7 +60,9 @@ def main() -> None:
             ("vulnerability_table", "res_vuln_table", ["rank asc"], None, False),
             ("reskilling_jobs", "res_reskill_jobs", ["row_id asc"], ("row_id",), True),
             ("reskilling_courses", "res_reskill_courses", ["course_id asc"], ("course_id",), True),
-            ("reskilling_skill_index", "res_reskill_index", ["kind asc", "skill asc"], ("kind", "skill"), True)
+            ("reskilling_skill_index", "res_reskill_index", ["kind asc", "skill asc"], ("kind", "skill"), True),
+            ("latest_jobs", "res_latest_jobs", ["postdate desc", "row_id asc"], ("row_id",), True),
+            ("courses", "res_courses", ["course_id asc"], ("course_id",), True)
         ]
         
         failures = []
