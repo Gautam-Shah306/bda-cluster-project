@@ -15,13 +15,14 @@ Single source for the current state. Read this first every session. Each member 
 Shared foundation (config, logging, Spark factory) | DONE, local mode verified | 2026-10-02 | Gautam |
 | Processing: jobs | DONE (local mode) | 2026-10-02 | Gautam |
 | Processing: courses | DONE (local mode) | 2026-10-02 | Gautam |
+| Analytics: dashboard stats and top-N | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** added `src/processing/process_courses.py`: courses CSV -> `processed/courses` Parquet (tag arrays incl. lower-cased copy, integer duration, parsed syllabus). Verified in local mode: 398 rows, all counts match the reference analysis.
+- **Last session (2026-10-02):** added `src/analytics/dashboard_stats.py`: stats, top cities/roles, industry distribution, city-roles and role-cities, written as Parquet under `analytics/`. Verified in local mode: counts match the reference analysis.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** first analytics jobs (dashboard stats and top-N) reading `processed/jobs`.
+- **Next:** add a row-order column to `processed/jobs` (needed for skill trends), then the hiring-trends / skill-trends / skill-gap analytics job.
 
 ## Member 2
 
