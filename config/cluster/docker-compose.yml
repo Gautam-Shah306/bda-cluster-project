@@ -1,0 +1,16 @@
+# Hadoop/Hive services will be added to this file later (ARCHITECTURE.md)
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: skills-mirage-mongo
+    ports:
+      - "${MONGO_HOST_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
