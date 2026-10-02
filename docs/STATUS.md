@@ -20,13 +20,14 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Analytics: vulnerability index | DONE (local mode) | 2026-10-02 | Gautam |
 | Analytics: reskilling lookup | DONE (local mode) | 2026-10-02 | Gautam |
 | Serving layer: Mongo + loader | DONE (local mode) | 2026-10-02 | Gautam |
+| Backend API: auth + dashboard routes | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** Mongo container (docker-compose, port set via MONGO_HOST_PORT), `src/common/mongo_client.py`, loader `src/analytics/load_results_to_mongo.py` loading all 16 analytics outputs into `res_*` collections. Verified: counts, content, order, indexes, idempotence.
+- **Last session (2026-10-02):** backend API skeleton in `src/api/`: app, JWT security (secret from .env, hash never returned), auth routes (signup/login/me), all dashboard routes except latest-jobs. Verified against Parquet per endpoint. Logged D-021.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** backend API (`src/api/`). Needs the bug keep/fix decisions listed below.
+- **Next:** serving extras (latest jobs, full courses) into Mongo, then `/dashboard/latest-jobs` and `/courses*` routes, then worker and reskilling routes with Gemini, then the chatbot.
 
 ## Member 2
 
