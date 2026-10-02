@@ -1,0 +1,20 @@
+mode: local
+local:
+  root: dataset
+cluster:
+  root: hdfs://hdp-master:9000/skills_mirage
+  spark_master: yarn
+spark:
+  app_name: SkillsMirage
+  local_master: "local[*]"
+  shuffle_partitions: 2
+paths:
+  raw/jobs: raw/jobs
+  raw/courses: raw/courses
+  raw/scraped_jobs: raw/scraped_jobs
+  raw/scraped_courses: raw/scraped_courses
+  processed/jobs: processed/jobs
+  processed/courses: processed/courses
+  analytics: analytics
+hive:
+  database: skills_mirage
