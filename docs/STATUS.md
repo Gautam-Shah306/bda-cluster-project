@@ -16,13 +16,14 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Processing: jobs | DONE (local mode) | 2026-10-02 | Gautam |
 | Processing: courses | DONE (local mode) | 2026-10-02 | Gautam |
 | Analytics: dashboard stats and top-N | DONE (local mode) | 2026-10-02 | Gautam |
+| Analytics: trends and skill gap | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** added `row_id` (CSV position) to `processed/jobs` (D-015), verified against an independent CSV read (30/30 positions). Earlier today: `process_courses`, `dashboard_stats`.
+- **Last session (2026-10-02):** added `src/analytics/trends_and_gap.py` (hiring trends, trend years, skill trends for all + each year, skill gap). Independent Counter cross-check matches. Logged D-016.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** `src/analytics/trends_and_gap.py` (hiring trends, trend years, skill trends, skill gap).
+- **Next:** vulnerability index analytics job.
 
 ## Member 2
 
