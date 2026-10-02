@@ -14,13 +14,14 @@ Single source for the current state. Read this first every session. Each member 
 | Cluster (1 master + 2 workers) | NOT STARTED. Type decided: Docker Compose (D-011) | 2026-10-02 | Gautam |
 Shared foundation (config, logging, Spark factory) | DONE, local mode verified | 2026-10-02 | Gautam |
 | Processing: jobs | DONE (local mode) | 2026-10-02 | Gautam |
+| Processing: courses | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** added `src/processing/process_jobs.py`: historical jobs CSV -> `processed/jobs` Parquet (skills array, city, title, ai_mentions). Verified in local mode: 22,979 rows, cities and empty-skills counts match the reference analysis.
+- **Last session (2026-10-02):** added `src/processing/process_courses.py`: courses CSV -> `processed/courses` Parquet (tag arrays incl. lower-cased copy, integer duration, parsed syllabus). Verified in local mode: 398 rows, all counts match the reference analysis.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** `process_courses` (courses CSV -> `processed/courses`), then the analytics jobs.
+- **Next:** first analytics jobs (dashboard stats and top-N) reading `processed/jobs`.
 
 ## Member 2
 
