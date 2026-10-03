@@ -22,13 +22,14 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Serving layer: Mongo + loader | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: auth + dashboard routes | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: courses + latest-jobs | DONE (local mode) | 2026-10-02 | Gautam |
+| Backend API: worker profile + Gemini risk | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** `/dashboard/latest-jobs` and all `/courses*` routes (in-memory matching over 398 courses, reference quirks kept), `POST /scrape/courses` disabled. All compared against independent CSV implementations. Logged D-022.
+- **Last session (2026-10-02):** worker flow: Gemini client (model from GEMINI_MODEL = gemini-3.5-flash, timeout in ms, secrets masked), worker parser, risk analysis, GET/POST /worker/profile. Verified with stubs and two real Gemini calls. Logged D-023.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** worker routes (profile, reskilling) with Gemini, then the chatbot.
+- **Next:** reskilling engine and GET/POST /worker/reskilling, then the chatbot.
 
 ## Member 2
 

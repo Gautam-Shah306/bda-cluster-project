@@ -35,11 +35,12 @@ async def log_requests(request: Request, call_next: Callable):
     response = await call_next(request)
     return response
 
-from src.api.routes import courses_routes
+from src.api.routes import courses_routes, worker_routes
 
 app.include_router(auth_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(courses_routes.router)
+app.include_router(worker_routes.router)
 
 @app.get("/")
 def read_root() -> dict:
