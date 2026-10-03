@@ -35,12 +35,18 @@ async def log_requests(request: Request, call_next: Callable):
     response = await call_next(request)
     return response
 
-from src.api.routes import courses_routes, worker_routes
+from src.api.routes import courses_routes, worker_routes, chatbot_routes
+from src.api.chatbot import sql_engine
 
 app.include_router(auth_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(courses_routes.router)
 app.include_router(worker_routes.router)
+app.include_router(chatbot_routes.router)
+
+@app.on_event("shutdown")
+def shutdown_event():
+    sql_engine.shutdown()
 
 @app.get("/")
 def read_root() -> dict:
