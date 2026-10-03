@@ -23,13 +23,14 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Backend API: auth + dashboard routes | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: courses + latest-jobs | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: worker profile + Gemini risk | DONE (local mode) | 2026-10-02 | Gautam |
+| Backend API: reskilling | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** worker flow: Gemini client (model from GEMINI_MODEL = gemini-3.5-flash, timeout in ms, secrets masked), worker parser, risk analysis, GET/POST /worker/profile. Verified with stubs and two real Gemini calls. Logged D-023.
+- **Last session (2026-10-02):** reskilling engine (`src/api/worker_engine/reskilling_engine.py`) and GET/POST `/worker/reskilling`: skill pool, index-based matching verified against fresh independent implementations on 11 pools, real Gemini call OK (gemini-3.5-flash, ~32 s), duration fix. Logged D-023 and D-024.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** reskilling engine and GET/POST /worker/reskilling, then the chatbot.
+- **Next:** chatbot (`/chatbot/query`), then the remaining API polish and the frontend.
 
 ## Member 2
 
