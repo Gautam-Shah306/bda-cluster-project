@@ -2,6 +2,7 @@
 import os
 from typing import Callable
 
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,8 @@ from src.common.logging_setup import get_logger
 
 logger = get_logger("api_main")
 
-load_dotenv(override=False)
+repo_root = Path(__file__).resolve().parent.parent.parent
+load_dotenv(repo_root / ".env", override=False)
 
 app = FastAPI(title="Skills Mirage API")
 
@@ -33,8 +35,11 @@ async def log_requests(request: Request, call_next: Callable):
     response = await call_next(request)
     return response
 
+from src.api.routes import courses_routes
+
 app.include_router(auth_routes.router)
 app.include_router(dashboard_routes.router)
+app.include_router(courses_routes.router)
 
 @app.get("/")
 def read_root() -> dict:

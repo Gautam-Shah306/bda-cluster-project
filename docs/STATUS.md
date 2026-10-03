@@ -21,13 +21,14 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Analytics: reskilling lookup | DONE (local mode) | 2026-10-02 | Gautam |
 | Serving layer: Mongo + loader | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: auth + dashboard routes | DONE (local mode) | 2026-10-02 | Gautam |
+| Backend API: courses + latest-jobs | DONE (local mode) | 2026-10-02 | Gautam |
 
 ## Gautam
 
 - **Working on now:** next component (see below).
-- **Last session (2026-10-02):** `src/analytics/serving_extras.py` (latest 50 jobs with raw skills string, full courses), loader extended to 18 `res_*` collections. Verified against independent CSV reads.
+- **Last session (2026-10-02):** `/dashboard/latest-jobs` and all `/courses*` routes (in-memory matching over 398 courses, reference quirks kept), `POST /scrape/courses` disabled. All compared against independent CSV implementations. Logged D-022.
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
-- **Next:** `/dashboard/latest-jobs` and `/courses*` routes, then worker and reskilling routes with Gemini, then the chatbot.
+- **Next:** worker routes (profile, reskilling) with Gemini, then the chatbot.
 
 ## Member 2
 

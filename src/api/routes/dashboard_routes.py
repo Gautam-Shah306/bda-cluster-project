@@ -1,8 +1,8 @@
 """Dashboard routes."""
 from collections import defaultdict
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from src.common.mongo_client import get_db
 
@@ -19,6 +19,12 @@ def query_docs(collection_name: str, filter_query: dict = None, sort_field: str 
     docs = get_collection(collection_name).find(filter_query, {"_id": 0, "seq": 0})
     if sort_field:
         docs = docs.sort(sort_field, 1)
+    return list(docs)
+
+@router.get("/latest-jobs")
+def get_latest_jobs() -> list:
+    """Get latest 50 jobs."""
+    docs = get_db()["res_latest_jobs"].find({}, {"_id": 0, "seq": 0, "row_id": 0}).sort("seq", 1)
     return list(docs)
 
 @router.get("/skill-gap")
