@@ -33,3 +33,13 @@ Concrete facts only: exact hostnames, versions, commands, paths. Screenshots go 
 
 ## Prompts for Antigravity
 Use the template in HOW_WE_WORK.md Section 8. End every prompt with the "changed / broken / how to verify" summary. Paste the full response back to Claude.
+
+## Code style (TypeScript / React frontend, src/frontend/)
+- TypeScript strict mode. No `any` (use `unknown` and narrow). No `@ts-ignore`.
+- Function components and hooks only; one component per file, named like the file (`Login.tsx`); hooks in `useX.ts`.
+- A short JSDoc comment at the top of every module and on every exported function, component and hook.
+- All HTTP goes through `src/services/api.ts` (no `fetch` in components). The API base comes from `import.meta.env.VITE_API_BASE_URL`. Never put secrets in `VITE_*` variables: they are shipped to the browser.
+- Tailwind: write complete class names. Never build class names from template strings (`bg-${color}-500` is not detected); use an explicit lookup object.
+- Do not create folders named `lib`, `build` or `env` under `src/frontend/` (the repo's .gitignore ignores those names). Never commit `node_modules/`, `dist/` or `.env`.
+- Tests: Vitest + Testing Library, next to the code (`Name.test.tsx`). Run `npm test`; lint with `npm run lint`; type-check and build with `npm run build`.
+- Commit `package-lock.json`. Add a dependency only when code uses it.

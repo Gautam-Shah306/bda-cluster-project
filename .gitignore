@@ -224,3 +224,8 @@ dataset/*
 !dataset/.gitkeep
 output/*
 !output/.gitkeep
+
+# Frontend
+node_modules/
+.vite/
+*.tsbuildinfo

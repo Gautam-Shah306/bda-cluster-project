@@ -25,6 +25,7 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 | Backend API: worker profile + Gemini risk | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: reskilling | DONE (local mode) | 2026-10-02 | Gautam |
 | Backend API: chatbot | DONE (local mode) | 2026-10-02 | Gautam |
+| Frontend: scaffold, auth, shell (F1) | DONE | 2026-10-09 | Heta |
 
 ## Gautam
 
@@ -33,12 +34,12 @@ Shared foundation (config, logging, Spark factory) | DONE, local mode verified |
 - **Broken / blocked:** `winutils.exe` warning on Windows is harmless so far. Datasets are not yet in `dataset/raw/`.
 - **Next:** frontend, then ingestion (scrapers), pipeline orchestration, cluster config files.
 
-## Member 2
+## Heta
 
 - **Working on now:** (not started)
-- **Last session:** -
-- **Broken / blocked:** -
-- **Next:** -
+- **Last session (2026-10-09):** frontend F1: Vite + React + TypeScript + Tailwind scaffold in `src/frontend/` (auth context with synchronous session restore, shared API client with 401 handling, Login, Register, Landing, dashboard shell with 7 placeholder pages, 404 page), 28 Vitest tests, lint/tsc/build clean, CORS and live sign-up/sign-in/refresh checked in a browser. Logged D-026, D-027, D-028.
+- **Broken / blocked:** none. (The older note about datasets not being in `dataset/raw/` is obsolete.)
+- **Next:** D-026 backend step (Spark warm-up, city hint), then the D-010 cluster smoke test, then F2 (dashboard pages) and F3 (worker pages and chatbot).
 
 ## Member 3
 
