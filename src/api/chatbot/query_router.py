@@ -116,6 +116,8 @@ Compare strings case-insensitively with lower().
 Tables available:
 {sql_engine.schema_text()}
 
+Note: A job's city is the trimmed text before the first comma in joblocation_address (e.g., trim(split(joblocation_address, ',')[0])); for any questions related to cities, you must filter or group using this expression rather than the full joblocation_address.
+
 Question: {question}"""
 
     try:

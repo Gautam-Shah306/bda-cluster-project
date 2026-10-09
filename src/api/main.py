@@ -15,7 +15,20 @@ logger = get_logger("api_main")
 repo_root = Path(__file__).resolve().parent.parent.parent
 load_dotenv(repo_root / ".env", override=False)
 
-app = FastAPI(title="Skills Mirage API")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if sql_engine.warm_up_enabled():
+        sql_engine.warm_up()
+        logger.info("Chatbot warm-up started in the background")
+    else:
+        logger.info("Chatbot warm-up disabled (CHATBOT_WARMUP)")
+        sql_engine.set_warmup_disabled()
+    yield
+    sql_engine.shutdown()
+
+app = FastAPI(title="Skills Mirage API", lifespan=lifespan)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
 origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
@@ -43,10 +56,6 @@ app.include_router(dashboard_routes.router)
 app.include_router(courses_routes.router)
 app.include_router(worker_routes.router)
 app.include_router(chatbot_routes.router)
-
-@app.on_event("shutdown")
-def shutdown_event():
-    sql_engine.shutdown()
 
 @app.get("/")
 def read_root() -> dict:

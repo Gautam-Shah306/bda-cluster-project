@@ -1,7 +1,8 @@
-"""SQL Engine for Chatbot using Spark."""
+"""SQL engine for the chatbot: lazy Spark session, SQL validation and safe execution."""
 import threading
 import time
 import re
+import os
 from typing import List, Tuple, Dict, Any
 
 from src.common.spark_session import get_spark
@@ -12,11 +13,57 @@ logger = get_logger("sql_engine")
 
 _session = None
 _lock = threading.RLock()
+_status = "idle"
 
 def is_started() -> bool:
     """Check if the Spark session is currently started."""
     with _lock:
         return _session is not None
+
+def warmup_status() -> str:
+    """Return the warm-up status: idle, running, ready, failed or disabled."""
+    with _lock:
+        return _status
+
+def set_warmup_disabled():
+    """Mark the warm-up as disabled (CHATBOT_WARMUP turned it off)."""
+    global _status
+    with _lock:
+        _status = "disabled"
+
+def warm_up_enabled() -> bool:
+    """Return False when CHATBOT_WARMUP is 0, false, no or off (default: on)."""
+    val = os.environ.get("CHATBOT_WARMUP", "1").strip().lower()
+    if val in ("0", "false", "no", "off"):
+        return False
+    return True
+
+def _warm_up_worker():
+    """Build the Spark session in the background; log the outcome and never raise."""
+    global _status
+    logger.info("Chatbot warm-up started")
+    start_t = time.time()
+    try:
+        get_session()
+        elapsed = time.time() - start_t
+        with _lock:
+            _status = "ready"
+        logger.info(f"Chatbot warm-up finished in {elapsed:.2f} s")
+    except Exception as e:
+        with _lock:
+            _status = "failed"
+        logger.error(f"Chatbot warm-up failed: {str(e)}")
+
+def warm_up() -> threading.Thread | None:
+    """Start the background warm-up thread; return it, or None when not needed."""
+    global _status
+    with _lock:
+        if _session is not None or _status == "running":
+            return None
+        _status = "running"
+        t = threading.Thread(target=_warm_up_worker, name="chatbot-warmup", daemon=True)
+        t.start()
+        return t
 
 def get_session():
     """Lazily initialize and return the Spark session with temp views."""
@@ -26,39 +73,52 @@ def get_session():
             return _session
             
         start_time = time.time()
-        _session = get_spark("chatbot_sql")
+        session = get_spark("chatbot_sql")
         
-        # Create temp views
-        jobs_path = get_path("processed/jobs")
-        courses_path = get_path("processed/courses")
-        
-        jobs_df = _session.read.parquet(str(jobs_path))
-        jobs_df.createOrReplaceTempView("raw_jobs")
-        _session.sql("""
-            CREATE OR REPLACE TEMP VIEW jobs AS 
-            SELECT company, education, experience, industry, jobdescription, jobid, joblocation_address, jobtitle, numberofpositions, payrate, postdate, site_name, concat_ws(',', skills) AS skills, uniq_id
-            FROM raw_jobs
-        """)
-        
-        courses_df = _session.read.parquet(str(courses_path))
-        courses_df.createOrReplaceTempView("raw_courses")
-        _session.sql("""
-            CREATE OR REPLACE TEMP VIEW courses AS 
-            SELECT name, source, domain, url, institution, duration_weeks, difficulty, concat_ws(', ', skill_tags) AS skill_tags, to_json(syllabus_weeks) AS syllabus_weeks
-            FROM raw_courses
-        """)
-        
-        elapsed = time.time() - start_time
-        logger.info(f"Chatbot Spark session started in {elapsed:.2f} seconds.")
-        return _session
+        try:
+            # Create temp views
+            jobs_path = get_path("processed/jobs")
+            courses_path = get_path("processed/courses")
+            
+            jobs_df = session.read.parquet(str(jobs_path))
+            jobs_df.createOrReplaceTempView("raw_jobs")
+            session.sql("""
+                CREATE OR REPLACE TEMP VIEW jobs AS 
+                SELECT company, education, experience, industry, jobdescription, jobid, joblocation_address, jobtitle, numberofpositions, payrate, postdate, site_name, concat_ws(',', skills) AS skills, uniq_id
+                FROM raw_jobs
+            """)
+            
+            courses_df = session.read.parquet(str(courses_path))
+            courses_df.createOrReplaceTempView("raw_courses")
+            session.sql("""
+                CREATE OR REPLACE TEMP VIEW courses AS 
+                SELECT name, source, domain, url, institution, duration_weeks, difficulty, concat_ws(', ', skill_tags) AS skill_tags, to_json(syllabus_weeks) AS syllabus_weeks
+                FROM raw_courses
+            """)
+            
+            _session = session
+            elapsed = time.time() - start_time
+            logger.info(f"Chatbot Spark session started in {elapsed:.2f} seconds.")
+            return _session
+        except Exception as e:
+            try:
+                session.stop()
+            except:
+                pass
+            raise
 
 def shutdown():
     """Stop the Spark session safely."""
-    global _session
+    global _session, _status
     with _lock:
         if _session is not None:
-            _session.stop()
+            old_session = _session
             _session = None
+            try:
+                old_session.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping Spark session: {str(e)}")
+        _status = "idle"
 
 def schema_text() -> str:
     """Return the schema descriptions for the LLM prompt."""
@@ -106,6 +166,7 @@ def validate_sql(sql: str) -> bool:
     return True
 
 def _normalize_path(p: str) -> str:
+    """Normalise a file URI or path for prefix comparison."""
     p = p.replace('\\', '/')
     if p.startswith('file:///'):
         p = p[8:]
