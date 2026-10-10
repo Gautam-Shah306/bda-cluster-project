@@ -1,9 +1,11 @@
 
 import { render, screen, act, cleanup } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import DashboardLayout from './layout/DashboardLayout';
 import { AuthProvider } from './context';
 import { AppRoutes } from './App';
-import { expect, test, vi, beforeEach, afterEach, describe } from 'vitest';
+import { expect, test, beforeEach, afterEach, describe } from 'vitest';
+import { setupMockApi, restoreMockApi } from './testing/mockApi';
 
 const renderApp = (initialRoute: string) => {
   return render(
@@ -19,7 +21,9 @@ describe('App routing', () => {
   afterEach(cleanup);
   beforeEach(() => {
     localStorage.clear();
+    setupMockApi();
     vi.restoreAllMocks();
+    restoreMockApi();
   });
 
   test('signed out at /dashboard -> the Login page', () => {
@@ -71,6 +75,14 @@ describe('App routing', () => {
     expect(screen.getByRole('heading', { name: 'AI Chatbot' })).toBeInTheDocument();
   });
 
+    test('signed in at /dashboard/hiring-trends -> shows the title "Aggregate Job Postings"', async () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('user', JSON.stringify({ name: 'Bob', email: 'b@b.com' }));
+    
+    renderApp('/dashboard/hiring-trends');
+    expect(await screen.findByText('Aggregate Job Postings')).toBeInTheDocument();
+  });
+
   test('an unknown path -> NotFound', () => {
     renderApp('/this-does-not-exist');
     expect(screen.getByText('404')).toBeInTheDocument();
@@ -103,4 +115,38 @@ describe('App routing', () => {
     
     expect(screen.getByText('Welcome Back')).toBeInTheDocument();
   });
+
+  test('a signed-in user at /dashboard with a page that throws shows the alert AND the sidebar links', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('user', JSON.stringify({ name: 'Bob', email: 'b@b.com' }));
+    
+    const ThrowingComponent = () => {
+      throw new Error('Test crash');
+    };
+
+    // Spy on console.error to avoid noise
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/dashboard/crash']}>
+          <Routes>
+            <Route element={<DashboardLayout />}>
+              <Route path="/dashboard/crash" element={<ThrowingComponent />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    );
+
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('Something went wrong while showing this page.')).toBeInTheDocument();
+    expect(screen.getByText('Test crash')).toBeInTheDocument();
+    expect(screen.getByText('Core Intelligence')).toBeInTheDocument();
+
+    consoleErrorSpy.mockRestore();
+  });
 });
+
+
+

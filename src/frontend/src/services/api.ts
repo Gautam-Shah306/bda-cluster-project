@@ -107,3 +107,39 @@ export const signupApi = (data: Record<string, string>) => {
     auth: false
   });
 };
+
+
+import {
+  DashboardStats,
+  HiringTrendPoint,
+  SkillTrends,
+  SkillGapRow,
+  VulnerabilityResponse,
+  LatestJob,
+  CityDemand,
+  RoleCount,
+  NameValue
+} from './dashboardTypes';
+
+export const getDashboardStats = () => apiFetch<DashboardStats>('/dashboard/stats');
+export const getHiringTrends = () => apiFetch<HiringTrendPoint[]>('/dashboard/hiring-trends');
+export const getSkillTrends = (year?: number) => {
+  const query = year !== undefined ? `?year=${year}` : '';
+  return apiFetch<SkillTrends>(`/dashboard/skill-trends${query}`);
+};
+export const getSkillTrendYears = async (): Promise<number[]> => {
+  const res = await apiFetch<{years: number[]}>('/dashboard/skill-trend-years');
+  if (!res || !Array.isArray(res.years) || !res.years.every(y => typeof y === 'number')) {
+    throw new ApiError(0, "", "Unexpected response from /dashboard/skill-trend-years");
+  }
+  return res.years;
+};
+export const getSkillGap = () => apiFetch<SkillGapRow[]>('/dashboard/skill-gap');
+export const getVulnerability = () => apiFetch<VulnerabilityResponse>('/dashboard/vulnerability');
+export const getLatestJobs = () => apiFetch<LatestJob[]>('/dashboard/latest-jobs');
+export const getTopCities = () => apiFetch<CityDemand[]>('/dashboard/top-cities');
+export const getTopRoles = () => apiFetch<RoleCount[]>('/dashboard/top-roles');
+export const getRoleDistribution = (city: string) => apiFetch<NameValue[]>(`/dashboard/city-role-distribution?city=${encodeURIComponent(city)}`);
+export const getCitySpread = (role: string) => apiFetch<NameValue[]>(`/dashboard/role-city-distribution?role=${encodeURIComponent(role)}`);
+
+

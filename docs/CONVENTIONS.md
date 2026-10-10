@@ -43,3 +43,7 @@ Use the template in HOW_WE_WORK.md Section 8. End every prompt with the "changed
 - Do not create folders named `lib`, `build` or `env` under `src/frontend/` (the repo's .gitignore ignores those names). Never commit `node_modules/`, `dist/` or `.env`.
 - Tests: Vitest + Testing Library, next to the code (`Name.test.tsx`). Run `npm test`; lint with `npm run lint`; type-check and build with `npm run build`.
 - Commit `package-lock.json`. Add a dependency only when code uses it.
+- Pure data-shaping functions go in `src/utils/` and are unit tested; components stay thin. Page tests mock `fetch` (a shared helper in `src/testing/`) and never assert recharts internals.
+- Every page that loads data uses the shared loading/error pattern: a loading text, and errors in an element with `role="alert"`.
+- Test fixtures that stand for API responses are copied from real responses of the running API (`src/testing/liveFixtures.ts`), never invented. Every page has a contract test that renders it with those fixtures and asserts no `console.error` call and no error alert. A fixture built from a schema instead of a live response is marked `contract-derived`.
+- Data that originates from an LLM or any unvalidated source passes through a normalizer function that accepts `unknown` before it reaches a component.

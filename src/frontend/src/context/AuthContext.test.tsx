@@ -1,7 +1,7 @@
 import { render, screen, act, cleanup } from '@testing-library/react';
 import { AuthProvider } from './AuthProvider';
 import { useAuth } from './useAuth';
-import { expect, test, vi, beforeEach, afterEach, describe } from 'vitest';
+import { expect, test, beforeEach, afterEach, describe } from 'vitest';
 
 const TestComponent = ({ onRender }: { onRender?: (isAuthenticated: boolean) => void }) => {
   const { isAuthenticated, user, login, logout } = useAuth();
@@ -128,3 +128,5 @@ describe('AuthContext', () => {
     consoleError.mockRestore();
   });
 });
+
+

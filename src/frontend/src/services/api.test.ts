@@ -170,3 +170,100 @@ describe('api.ts', () => {
     expect(mockFetch.mock.calls[0][0]).toBe(`${API_BASE}/success`);
   });
 });
+
+import { setupMockApi, restoreMockApi, recordedCalls, overrideMock } from '../testing/mockApi';
+import {
+  getDashboardStats,
+  getHiringTrends,
+  getSkillTrends,
+  getSkillTrendYears,
+  getSkillGap,
+  getVulnerability,
+  getLatestJobs,
+  getTopCities,
+  getTopRoles,
+  getRoleDistribution,
+  getCitySpread
+} from './api';
+
+describe('dashboard endpoints', () => {
+  beforeEach(() => {
+    setupMockApi();
+  });
+
+  afterEach(() => {
+    restoreMockApi();
+  });
+
+  it('getDashboardStats calls /dashboard/stats', async () => {
+    await getDashboardStats();
+    expect(recordedCalls[0].url).toContain('/dashboard/stats');
+  });
+
+  it('getHiringTrends calls /dashboard/hiring-trends', async () => {
+    await getHiringTrends();
+    expect(recordedCalls[0].url).toContain('/dashboard/hiring-trends');
+  });
+
+  it('getSkillTrends handles year query', async () => {
+    await getSkillTrends();
+    expect(recordedCalls[0].url).toMatch(/\/dashboard\/skill-trends$/);
+    
+    await getSkillTrends(2026);
+    expect(recordedCalls[1].url).toMatch(/\/dashboard\/skill-trends\?year=2026$/);
+  });
+
+  it('getSkillTrendYears returns plain number array from {years: [...] } object', async () => {
+    const res = await getSkillTrendYears();
+    expect(res).toEqual([2026, 2017, 2016, 2015]);
+    expect(recordedCalls[0].url).toContain('/dashboard/skill-trend-years');
+  });
+
+  it('getSkillTrendYears rejects bare array with Unexpected response message', async () => {
+    overrideMock('/dashboard/skill-trend-years', { status: 200, body: [2026, 2017] });
+    await expect(getSkillTrendYears()).rejects.toThrow("Unexpected response from /dashboard/skill-trend-years");
+  });
+
+  it('getSkillTrendYears rejects {years: "x"} with Unexpected response message', async () => {
+    overrideMock('/dashboard/skill-trend-years', { status: 200, body: { years: "x" } });
+    await expect(getSkillTrendYears()).rejects.toThrow("Unexpected response from /dashboard/skill-trend-years");
+  });
+
+  it('getSkillGap calls /dashboard/skill-gap', async () => {
+    await getSkillGap();
+    expect(recordedCalls[0].url).toContain('/dashboard/skill-gap');
+  });
+
+  it('getVulnerability calls /dashboard/vulnerability', async () => {
+    await getVulnerability();
+    expect(recordedCalls[0].url).toContain('/dashboard/vulnerability');
+  });
+
+  it('getLatestJobs calls /dashboard/latest-jobs', async () => {
+    await getLatestJobs();
+    expect(recordedCalls[0].url).toContain('/dashboard/latest-jobs');
+  });
+
+  it('getTopCities calls /dashboard/top-cities', async () => {
+    await getTopCities();
+    expect(recordedCalls[0].url).toContain('/dashboard/top-cities');
+  });
+
+  it('getTopRoles calls /dashboard/top-roles', async () => {
+    await getTopRoles();
+    expect(recordedCalls[0].url).toContain('/dashboard/top-roles');
+  });
+
+  it('getRoleDistribution encodes parameter', async () => {
+    await getRoleDistribution('Delhi/NCR & co');
+    expect(recordedCalls[0].url).toContain('/dashboard/city-role-distribution?city=Delhi%2FNCR%20%26%20co');
+  });
+
+  it('getCitySpread calls /dashboard/role-city-distribution', async () => {
+    await getCitySpread('Software Engineer');
+    expect(recordedCalls[0].url).toContain('/dashboard/role-city-distribution?role=Software%20Engineer');
+  });
+});
+
+
+

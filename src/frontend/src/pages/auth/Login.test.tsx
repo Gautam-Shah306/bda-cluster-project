@@ -3,7 +3,7 @@ import { render, screen, act, fireEvent, cleanup } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '../../context';
 import Login from './Login';
-import { expect, test, vi, beforeEach, afterEach, describe } from 'vitest';
+import { expect, test, beforeEach, afterEach, describe } from 'vitest';
 import * as api from '../../services/api';
 
 vi.mock('../../services/api', async (importOriginal) => {
@@ -81,3 +81,5 @@ describe('Login.tsx', () => {
     expect(localStorage.getItem('token')).toBeNull();
   });
 });
+
+

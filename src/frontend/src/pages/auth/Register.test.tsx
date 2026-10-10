@@ -2,7 +2,7 @@
 import { render, screen, act, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Register from './Register';
-import { expect, test, vi, beforeEach, afterEach, describe } from 'vitest';
+import { expect, test, beforeEach, afterEach, describe } from 'vitest';
 import * as api from '../../services/api';
 
 vi.mock('../../services/api', async (importOriginal) => {
@@ -94,3 +94,5 @@ describe('Register.tsx', () => {
     // No crash, and test passes.
   });
 });
+
+

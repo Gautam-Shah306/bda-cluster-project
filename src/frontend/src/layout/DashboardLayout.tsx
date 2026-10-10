@@ -1,5 +1,6 @@
 
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -15,6 +16,7 @@ import { useAuth } from '../context';
 
 export default function DashboardLayout() {
   const { user, logout } = useAuth();
+  const location = useLocation();
 
   return (
     <div className="flex h-screen bg-background text-textPrimary">
@@ -108,10 +110,14 @@ export default function DashboardLayout() {
         {/* Scrollable Page Area */}
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-7xl mx-auto">
-            <Outlet />
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </div>
       </main>
     </div>
   );
 }
+
+
