@@ -1,1 +1,1 @@
-"""Analytics module."""
+"""Package root for data analytics jobs."""

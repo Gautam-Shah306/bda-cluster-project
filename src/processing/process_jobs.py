@@ -1,99 +1,109 @@
-"""Jobs processing module."""
-import sys
-from pathlib import Path
+"""PySpark job to normalise the raw Naukri jobs CSV.
 
-# Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+Reads dataset/raw/jobs/naukri_jobs.csv (14 columns, ~22,979 rows) and
+writes a Parquet dataset to dataset/processed/jobs/ with additional
+derived columns:
 
-from pyspark.sql import functions as F, Window
+  row_id       int   0-based CSV row position (used for skill-trend half-split)
+  city         str   first comma-separated token of joblocation_address
+  title        str   alias of jobtitle
+  ai_mentions  array<str>  AI keywords found in lower-cased jobdescription
+  skills       array<str>  parsed skills list
+
+All original 14 columns are preserved as strings.
+"""
+from __future__ import annotations
+
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.types import ArrayType, StringType
+from pyspark.sql.window import Window
 
 from src.common.config import get_path
 from src.common.logging_setup import get_logger
 from src.common.spark_session import get_spark
 
-logger = get_logger("process_jobs")
+log = get_logger(__name__)
 
-def main() -> None:
-    """Run the jobs processing logic."""
-    spark = None
-    try:
-        input_uri = get_path("raw/jobs")
-        output_uri = get_path("processed/jobs")
-        
-        spark = get_spark("process_jobs")
-        logger.info("Reading input from: %s", input_uri)
-        
-        try:
-            df = spark.read.csv(
-                input_uri,
-                header=True,
-                inferSchema=False,
-                multiLine=True,
-                quote='"',
-                escape='"'
-            )
-        except Exception as e:
-            if "Path does not exist" in str(e):
-                logger.error("FAIL: Input path does not exist: %s", input_uri)
-                sys.exit(1)
-            raise
-            
-        # Add row_id (D-015): 0-based position in source CSV.
-        # Computed before any filters. A single global window is acceptable at this data size.
-        window_spec = Window.orderBy(F.monotonically_increasing_id())
-        df = df.withColumn("row_id", F.row_number().over(window_spec) - 1)
-        
-        # 1. Replace nulls with ""
-        df = df.fillna("")
-        
-        # 2. skills: array<string>. Strip leading "[" and trailing "]", split on commas, trim, drop empty
-        skills_expr = F.expr(
-            "filter(transform(split(regexp_replace(skills, '^\\\\[|\\\\]$', ''), ','), x -> trim(x)), x -> length(x) > 0)"
-        )
-        
-        # 3. city: text before first comma of joblocation_address, trimmed; "Unknown" if empty
-        city_expr = F.trim(F.substring_index(F.col("joblocation_address"), ",", 1))
-        city_expr = F.when((city_expr == "") | city_expr.isNull(), "Unknown").otherwise(city_expr)
-        
-        # 4. title: copy of jobtitle
-        title_expr = F.col("jobtitle")
-        
-        # 5. ai_mentions
-        keywords = [
-            "chatgpt", "openai", "generative ai", "machine learning",
-            "automation", "llm", "gpt", "ai tools"
-        ]
-        kw_conditions = []
-        for kw in keywords:
-            kw_conditions.append(F.when(F.lower(F.col("jobdescription")).contains(kw), F.lit(kw)))
-        ai_mentions_expr = F.array_compact(F.array(*kw_conditions))
-        
-        # Build final DataFrame
-        processed_df = df.withColumn("skills", skills_expr) \
-                         .withColumn("city", city_expr) \
-                         .withColumn("title", title_expr) \
-                         .withColumn("ai_mentions", ai_mentions_expr)
-                         
-        # Put row_id as the first column
-        cols = ["row_id"] + [c for c in processed_df.columns if c != "row_id"]
-        processed_df = processed_df.select(cols)
-                         
-        logger.info("Writing output to: %s", output_uri)
-        processed_df.write.mode("overwrite").parquet(output_uri)
-        
-        # Log row count from written output
-        written_df = spark.read.parquet(output_uri)
-        count = written_df.count()
-        logger.info("Successfully processed and wrote %d rows.", count)
-        
-    except SystemExit:
-        raise
-    except Exception as e:
-        logger.error("FAIL: Job failed with exception: %s", e)
-        sys.exit(1)
-    finally:
-        if spark is not None:
-            spark.stop()
+_AI_KEYWORDS: list[str] = [
+    "chatgpt", "openai", "generative ai", "machine learning",
+    "automation", "llm", "gpt", "ai tools",
+]
+
+
+def _ai_mentions_expr(col_name: str) -> F.Column:
+    """Return a Spark column expression that finds AI keywords in a string column."""
+    lower_col = F.lower(F.col(col_name))
+    keyword_arrays = [
+        F.when(lower_col.contains(kw), F.lit(kw)).otherwise(F.lit(None))
+        for kw in _AI_KEYWORDS
+    ]
+    return F.array_compact(F.array(*keyword_arrays)).cast(ArrayType(StringType()))
+
+
+def _parse_skills_expr(col_name: str) -> F.Column:
+    """Parse a skills string into an array of trimmed skill tokens."""
+    raw = F.col(col_name)
+    stripped = F.trim(F.regexp_replace(raw, r"^\[|\]$", ""))
+    tokens = F.split(stripped, ",")
+    trimmed = F.transform(tokens, lambda x: F.trim(x))
+    return F.filter(trimmed, lambda x: F.length(x) > 0)
+
+
+def run(spark: SparkSession) -> None:
+    """Execute the jobs processing job."""
+    raw_path = get_path("raw_jobs")
+    out_path = get_path("processed_jobs")
+    log.info("Reading raw jobs from: %s", raw_path)
+
+    schema_cols = [
+        "company", "education", "experience", "industry",
+        "jobdescription", "jobid", "joblocation_address", "jobtitle",
+        "numberofpositions", "payrate", "postdate", "site_name",
+        "skills", "uniq_id",
+    ]
+
+    df = (
+        spark.read
+        .option("header", "true")
+        .option("encoding", "UTF-8")
+        .option("multiLine", "true")
+        .option("escape", '"')
+        .csv(raw_path)
+        .fillna("")
+    )
+
+    existing = set(df.columns)
+    for col in schema_cols:
+        if col not in existing:
+            df = df.withColumn(col, F.lit(""))
+    df = df.select(*schema_cols)
+
+    df = df.withColumn("_mid", F.monotonically_increasing_id())
+    w = Window.orderBy("_mid")
+    df = df.withColumn("row_id", (F.row_number().over(w) - 1).cast("integer"))
+    df = df.drop("_mid")
+
+    df = df.withColumn("skills", _parse_skills_expr("skills"))
+    df = df.withColumn(
+        "city",
+        F.trim(F.split(F.col("joblocation_address"), ",")[0]),
+    )
+    df = df.withColumn(
+        "city",
+        F.when(F.length(F.col("city")) == 0, F.lit("Unknown")).otherwise(F.col("city")),
+    )
+    df = df.withColumn("title", F.col("jobtitle"))
+    df = df.withColumn("ai_mentions", _ai_mentions_expr("jobdescription"))
+
+    count = df.count()
+    log.info("Writing %d processed job rows to: %s", count, out_path)
+    df.write.mode("overwrite").parquet(out_path)
+    log.info("Successfully processed and wrote %d rows.", count)
+
 
 if __name__ == "__main__":
-    main()
+    spark = get_spark("skills_mirage_process_jobs")
+    try:
+        run(spark)
+    finally:
+        spark.stop()

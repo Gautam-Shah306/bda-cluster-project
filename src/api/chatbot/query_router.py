@@ -1,177 +1,254 @@
-"""Chatbot query router."""
+import sqlite3
 import json
-from src.api.worker_engine.gemini_client import generate_text, mask_secrets, GeminiNotConfigured
-from src.api.chatbot import sql_engine
+import logging
+from pathlib import Path
+from chatbot.gemini_client import ask_gemini, generate_sql_query, generate_natural_response
 
-RISK_KEYWORDS = [
-    "risk score", "my risk", "risk level", "risk analysis", "risk assessment", 
-    "ai risk", "automation risk", "vulnerability", "vulnerable", "at risk", 
-    "job security", "will ai take", "replace my job", "replaced by ai", 
-    "how risky", "explain my risk", "why is my risk", "jokhim", "mera risk", 
-    "mera score", "risk kitna", "khatra"
+logger = logging.getLogger(__name__)
+
+DB_PATH = Path(__file__).resolve().parent.parent / "db" / "chat_data.db"
+
+# ── Intent keywords ──────────────────────────────────────────────────────────
+
+_RISK_KEYWORDS = [
+    "risk score", "risk level", "why is my risk", "my risk",
+    "risk increased", "risk high", "risk low", "risk moderate",
+    "factors affect", "explain risk", "what affects my score",
+    "vulnerability", "automation risk", "ai risk",
+    "risk assessment", "risk analysis", "risk report",
+    "why am i at risk", "high risk", "score explanation",
+    # Hindi variants
+    "jokhim", "risk kyun", "risk kyu", "mera risk",
 ]
 
-IMPROVEMENT_KEYWORDS = [
-    "improve", "reduce risk", "lower my risk", "career path", "career", "future", 
-    "reskill", "upskill", "learning path", "learning", "course", "recommend", 
-    "suggest", "timeline", "roadmap", "what should i learn", "what to learn", 
-    "new skill", "skills to learn", "pivot", "switch", "transition", "next step", 
-    "guidance", "advice", "path", "kya seekhu", "kya sikhu", "kaise improve", 
-    "sudhar", "aage badhna"
+_IMPROVEMENT_KEYWORDS = [
+    "improve", "reduce risk", "lower risk", "reduce my risk",
+    "what should i do", "what can i do", "next steps",
+    "career direction", "career path", "future",
+    "skills should i learn", "what to learn", "learn next",
+    "how to upskill", "reskilling", "upskilling",
+    "reskill", "upskill", "learning path", "course",
+    "recommend", "suggestion", "guidance", "timeline",
+    "how do i get better", "how to grow",
+    # Hindi variants
+    "kya seekhu", "kya karu", "kaise improve", "kaise sudhar",
+    "sudhaar", "behtar", "seekhna", "path",
 ]
 
-LANGUAGE_RULE = "Reply entirely in the same language as the user's question (English or Hindi), never mixing them."
 
-def classify_intent(question: str) -> str:
-    """Classify the user intent based on keywords."""
-    question_lower = question.lower()
-    
-    for kw in IMPROVEMENT_KEYWORDS:
-        if kw in question_lower:
-            return "improvement_guidance"
-            
-    for kw in RISK_KEYWORDS:
-        if kw in question_lower:
-            return "risk_explanation"
-            
+# ── Intent classifier ────────────────────────────────────────────────────────
+
+def _classify_intent(question: str) -> str:
+    """
+    Return one of: 'risk_explanation', 'improvement_guidance', 'data_query'.
+    Uses simple keyword matching — fast and deterministic.
+    """
+    q = question.lower()
+
+    # Check improvement first (some questions mention "risk" AND "improve")
+    if any(kw in q for kw in _IMPROVEMENT_KEYWORDS):
+        return "improvement_guidance"
+
+    if any(kw in q for kw in _RISK_KEYWORDS):
+        return "risk_explanation"
+
     return "data_query"
 
-def ask_gemini(prompt: str) -> str:
-    """Wrapper to call Gemini and handle errors."""
-    try:
-        text = generate_text(prompt, None)
-        if not text:
-            return "No response text returned by Gemini."
-        return text
-    except GeminiNotConfigured:
-        return "Gemini is not configured. Set GEMINI_API_KEY and try again."
-    except Exception as exc:
-        return "Gemini request failed: " + mask_secrets(str(exc))
 
-def _handle_risk_intent(question: str, user_data: dict, worker_profile: dict) -> str:
-    gemini_analysis = user_data.get("gemini_analysis")
-    job_role = user_data.get("job_role")
-    
-    if not gemini_analysis or gemini_analysis.get("risk_score") is None:
-        return "Please fill in the Worker Analysis page and click 'Analyze Risk & Opportunities' first."
-        
-    prompt = f"""You are a career guidance assistant. Answer using ONLY the analysis below. Never say you don't know.
+# ── Handlers ─────────────────────────────────────────────────────────────────
 
-Job Role: {job_role}
-Risk Score: {gemini_analysis.get('risk_score', 'N/A')}/100
-Risk Level: {gemini_analysis.get('risk_level', 'unknown')}
-Explanation: {gemini_analysis.get('explanation', '')}
-Pivot Roles: {gemini_analysis.get('pivot_roles', [])}
-New Skills: {gemini_analysis.get('new_skills', [])}
+def _handle_risk_explanation(question: str, user_data: dict) -> str:
+    """Use the stored worker analysis / Gemini analysis to answer risk questions."""
+    gemini_analysis = user_data.get("gemini_analysis") or {}
+    job_role = user_data.get("job_role", "N/A")
+    risk_score = gemini_analysis.get("risk_score")
+    risk_level = gemini_analysis.get("risk_level", "unknown")
+    explanation = gemini_analysis.get("explanation", "")
+    pivot_roles = gemini_analysis.get("pivot_roles", [])
+    new_skills = gemini_analysis.get("new_skills", [])
 
-Question: {question}
+    if not gemini_analysis or risk_score is None:
+        return (
+            "I don't have a risk analysis on file for you yet. "
+            "Please go to the **Worker Analysis** page, fill in your profile, "
+            "and click 'Analyze Risk & Opportunities' first."
+        )
 
-{LANGUAGE_RULE}"""
+    # Build a rich context and let Gemini compose a natural answer
+    context = (
+        f"The user's job role is '{job_role}'. "
+        f"Their AI-risk score is {risk_score}/100 (level: {risk_level}). "
+        f"Gemini explanation: {explanation}. "
+        f"Suggested pivot roles: {', '.join(pivot_roles) if pivot_roles else 'none'}. "
+        f"Recommended new skills: {', '.join(new_skills) if new_skills else 'none'}."
+    )
+
+    prompt = f"""You are a career guidance AI assistant. The user is asking about their AI-risk score.
+Answer their question using ONLY the analysis data provided below. Be specific, reference their actual score
+and factors. Be empathetic and helpful.
+
+--- Analysis Data ---
+{context}
+
+--- User Question ---
+{question}
+
+Provide a clear, structured explanation. Do NOT say "I don't know" — use the data above.
+
+LANGUAGE RULE (MANDATORY): Detect the language of the User Question above. Your ENTIRE response MUST be written in that SAME language.
+- If the user wrote in English → reply ONLY in English.
+- If the user wrote in Hindi → reply ONLY in Hindi.
+Do NOT mix languages. Do NOT switch languages mid-response."""
 
     return ask_gemini(prompt)
 
-def _handle_improvement_intent(question: str, user_data: dict, worker_profile: dict) -> str:
+
+def _handle_improvement_guidance(question: str, user_data: dict) -> str:
+    """Use the stored reskilling result to answer improvement / career guidance questions."""
+    reskilling = user_data.get("reskilling_result") or {}
     gemini_analysis = user_data.get("gemini_analysis") or {}
-    reskilling_result = user_data.get("reskilling_result")
-    
-    if not gemini_analysis and not reskilling_result:
-        return "Please submit the Worker Analysis profile and then click 'Generate Reskilling Path' first."
-        
-    prompt_parts = ["You are a career guidance assistant."]
-    prompt_parts.append(f"User Job Role: {user_data.get('job_role', 'N/A')}")
-    prompt_parts.append(f"User Skills: {user_data.get('skills', [])}")
-    
+    job_role = user_data.get("job_role", "N/A")
+
+    # Build context from both analyses
+    risk_context = ""
     if gemini_analysis:
-        prompt_parts.append("Risk Context:")
-        prompt_parts.append(json.dumps({
-            "risk_score": gemini_analysis.get("risk_score"),
-            "risk_level": gemini_analysis.get("risk_level"),
-            "explanation": gemini_analysis.get("explanation"),
-            "pivot_roles": gemini_analysis.get("pivot_roles"),
-            "new_skills": gemini_analysis.get("new_skills")
-        }, ensure_ascii=False))
-        
-    if isinstance(reskilling_result, dict) and reskilling_result.get("recommendation_type"):
-        prompt_parts.append("Reskilling Context:")
-        prompt_parts.append(json.dumps({
-            "recommendation_type": reskilling_result.get("recommendation_type"),
-            "summary": reskilling_result.get("summary"),
-            "recommended_skills": reskilling_result.get("recommended_skills"),
-            "recommended_courses": reskilling_result.get("recommended_courses", [])[:8],
-            "recommended_jobs": reskilling_result.get("recommended_jobs", [])[:8],
-            "learning_path": reskilling_result.get("learning_path")
-        }, ensure_ascii=False))
-        
-    prompt_parts.append(f"Question: {question}")
-    prompt_parts.append(LANGUAGE_RULE)
-    
-    return ask_gemini("\n\n".join(prompt_parts))
+        risk_context = (
+            f"Risk score: {gemini_analysis.get('risk_score', 'N/A')}/100 "
+            f"(level: {gemini_analysis.get('risk_level', 'unknown')}). "
+            f"Explanation: {gemini_analysis.get('explanation', '')}. "
+            f"Pivot roles: {', '.join(gemini_analysis.get('pivot_roles', []))}. "
+            f"New skills: {', '.join(gemini_analysis.get('new_skills', []))}."
+        )
+
+    reskilling_context = ""
+    if reskilling and reskilling.get("recommendation_type"):
+        reskilling_context = (
+            f"\nRecommendation type: {reskilling.get('recommendation_type')}. "
+            f"Summary: {reskilling.get('summary', '')}. "
+            f"Recommended skills: {json.dumps(reskilling.get('recommended_skills', []), default=str)}. "
+            f"Recommended courses: {json.dumps(reskilling.get('recommended_courses', [])[:8], default=str)}. "
+            f"Recommended jobs: {json.dumps(reskilling.get('recommended_jobs', [])[:8], default=str)}. "
+            f"Learning path: {json.dumps(reskilling.get('learning_path', []), default=str)}."
+        )
+
+    if not risk_context and not reskilling_context:
+        return (
+            "I don't have enough data to guide you yet. Please complete the following:\n\n"
+            "1. Go to **Worker Analysis** and submit your profile.\n"
+            "2. Go to **Reskilling Paths** and click 'Generate Reskilling Path'.\n\n"
+            "Once done, come back and I'll provide personalised guidance!"
+        )
+
+    prompt = f"""You are a career guidance AI assistant. The user is asking for improvement advice or career direction.
+Answer using ONLY the analysis and reskilling data provided below. Be specific — mention actual skills, courses,
+jobs, and learning timelines from the data.
+
+--- User Profile ---
+Job role: {job_role}
+Skills: {', '.join(user_data.get('skills', []))}
+
+--- Risk Analysis ---
+{risk_context if risk_context else 'Not available yet.'}
+
+--- Reskilling Recommendations ---
+{reskilling_context if reskilling_context else 'Not generated yet. Advise the user to generate a reskilling path.'}
+
+--- User Question ---
+{question}
+
+Provide actionable, structured guidance. Include specific skill names, course names, and job titles from the data.
+Do NOT say "I don't know" — use whatever data is available above.
+
+LANGUAGE RULE (MANDATORY): Detect the language of the User Question above. Your ENTIRE response MUST be written in that SAME language.
+- If the user wrote in English → reply ONLY in English.
+- If the user wrote in Hindi → reply ONLY in Hindi.
+Do NOT mix languages. Do NOT switch languages mid-response."""
+
+    return ask_gemini(prompt)
+
+
+# ── Database helpers (existing) ──────────────────────────────────────────────
+
+def get_db_schema():
+    if not DB_PATH.exists():
+        return "No database found."
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';")
+    schema = "\n".join([row[0] for row in cursor.fetchall() if row[0]])
+    conn.close()
+    return schema
+
+def clean_sql(sql_str):
+    sql_str = sql_str.strip()
+    if sql_str.startswith("```sql"):
+        sql_str = sql_str[6:]
+    if sql_str.startswith("```"):
+        sql_str = sql_str[3:]
+    if sql_str.endswith("```"):
+        sql_str = sql_str[:-3]
+    return sql_str.strip()
+
 
 def _handle_data_query(question: str, worker_profile: dict) -> str:
-    sql_prompt = f"""Convert the question into ONE read-only Spark SQL query.
-Reply with ONLY the SQL, no markdown, no explanation.
-Add LIMIT 100 unless the question asks for a count or an aggregate.
-Compare strings case-insensitively with lower().
+    """Original NL → SQL → NL pipeline for job/course data questions."""
+    schema = get_db_schema()
+    if "No database found" in schema:
+        return "Database missing. Please ask administrator to initialize."
 
-Tables available:
-{sql_engine.schema_text()}
+    raw_sql = generate_sql_query(question, schema)
+    sql = clean_sql(raw_sql)
 
-Note: A job's city is the trimmed text before the first comma in joblocation_address (e.g., trim(split(joblocation_address, ',')[0])); for any questions related to cities, you must filter or group using this expression rather than the full joblocation_address.
-
-Question: {question}"""
-
-    try:
-        sql_text = generate_text(sql_prompt, None)
-    except GeminiNotConfigured:
-        return "Gemini is not configured. Set GEMINI_API_KEY and try again."
-    except Exception as exc:
-        return "Gemini request failed: " + mask_secrets(str(exc))
-        
-    sql = sql_engine.clean_sql(sql_text)
-    if not sql_engine.validate_sql(sql):
+    conn = sqlite3.connect(DB_PATH)
+    if any(kw in sql.upper() for kw in ("DROP", "DELETE", "UPDATE", "INSERT")):
+        conn.close()
         return "Query blocked due to safety restrictions."
-        
-    try:
-        rows, total, more = sql_engine.run_query(sql)
-    except PermissionError:
-        return "Query blocked due to safety restrictions."
-    except Exception as exc:
-        return "Error processing query: " + mask_secrets(str(exc))[:500]
-        
-    if not rows:
-        results_text = "No records found matching the criteria."
-    else:
-        raw_str = str(rows)[:3000]
-        if more:
-            results_text = f"Found more than 1000 results (showing top 20):\n{raw_str}"
-        elif total > 20:
-            results_text = f"Found {total} results (showing top 20):\n{raw_str}"
+
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    column_names = [desc[0] for desc in cursor.description] if cursor.description else []
+    conn.close()
+
+    formatted_results = "No records found matching the criteria."
+    if results:
+        sliced = results[:20]
+        mapped = [{col: row[i] for i, col in enumerate(column_names)} for row in sliced]
+        data_str = str(mapped)[:3000]
+        if len(results) > 20:
+            formatted_results = f"Found {len(results)} results (showing top 20):\n{data_str}"
         else:
-            results_text = raw_str
+            formatted_results = data_str
 
-    answer_parts = ["Write a concise summary. Mention only existing data."]
-    
-    if isinstance(worker_profile, dict) and worker_profile:
-        prof_str = json.dumps(worker_profile, ensure_ascii=False)[:2000]
-        answer_parts.append(f"Worker Profile:\n{prof_str}")
-        
-    answer_parts.append(f"Question: {question}")
-    answer_parts.append(f"Results:\n{results_text}")
-    answer_parts.append(LANGUAGE_RULE)
-    
-    return ask_gemini("\n\n".join(answer_parts))
+    return generate_natural_response(question, formatted_results, worker_profile)
 
-def handle_query(query: dict, user_data: dict | None) -> str:
+
+# ── Main entry point ─────────────────────────────────────────────────────────
+
+def handle_query(query: dict, user_data: dict | None = None) -> str:
+    """
+    Route a chatbot query based on detected intent.
+
+    Args:
+        query: dict with 'worker_profile' and 'question'
+        user_data: authenticated user's MongoDB document (optional but needed
+                   for risk/reskilling answers)
+    """
     question = query.get("question", "")
-    worker_profile = query.get("worker_profile") or {}
-    
+    worker_profile = query.get("worker_profile", {})
     user_data = user_data or {}
-    
-    intent = classify_intent(question)
-    
+
+    intent = _classify_intent(question)
+    logger.info("Chatbot intent: %s | question: %s", intent, question[:80])
+
     if intent == "risk_explanation":
-        return _handle_risk_intent(question, user_data, worker_profile)
-    elif intent == "improvement_guidance":
-        return _handle_improvement_intent(question, user_data, worker_profile)
-    else:
+        return _handle_risk_explanation(question, user_data)
+
+    if intent == "improvement_guidance":
+        return _handle_improvement_guidance(question, user_data)
+
+    # Default: NL → SQL → NL data query
+    try:
         return _handle_data_query(question, worker_profile)
+    except Exception as e:
+        return f"Error processing query: {str(e)}"

@@ -1,109 +1,95 @@
-r"""Analytics: Reskilling lookup tables and skill index.
+"""PySpark analytics job: precomputed lookup tables for reskilling engine.
 
-Rules implemented:
-- reskilling_jobs: Excludes jobs with no valid skills. Contains row_id, title, company, city,
-  skills_first10 (first 10 of original skills), and skills_lower_set (distinct lower-cased non-empty skills).
-- reskilling_courses: Includes all courses. Contains course_id, name, source, url, tags_lower (as stored),
-  and tags_lower_set (distinct non-empty items of skill_tags_lower).
-- reskilling_skill_index: Maps (kind, skill) to ascending distinct array of ids (row_id for jobs, course_id for courses).
-
-Matching tie rule (implemented by the API, using these tables): overlap count descending, 
-tie-break by original source order (jobs by row_id ASC, courses by course_id ASC) which gives a stable sort.
+Produces 3 Parquet result sets:
+  - analytics/reskilling_jobs: all jobs with clean lookup fields
+  - analytics/reskilling_courses: all courses with clean lookup fields
+  - analytics/reskilling_skill_index: inverted index skill -> list of job row_ids
 """
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-# Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-from pyspark.sql import functions as F
+from collections import defaultdict
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.window import Window
 
 from src.common.config import get_path
 from src.common.logging_setup import get_logger
 from src.common.spark_session import get_spark
 
-logger = get_logger("reskilling_lookup")
+log = get_logger(__name__)
 
-def main() -> None:
-    spark = None
-    try:
-        jobs_uri = get_path("processed/jobs")
-        courses_uri = get_path("processed/courses")
-        analytics_base = get_path("analytics").rstrip("/")
-        
-        spark = get_spark("reskilling_lookup")
-        logger.info("Reading processed data from %s and %s", jobs_uri, courses_uri)
-        
-        try:
-            jobs_df = spark.read.parquet(jobs_uri)
-            courses_df = spark.read.parquet(courses_uri)
-        except Exception as e:
-            if "Path does not exist" in str(e):
-                logger.error("FAIL: Input path does not exist: %s", e)
-                sys.exit(1)
-            raise
 
-        # 1. reskilling_jobs
-        skills_first10_expr = F.slice(F.coalesce(F.col("skills"), F.array()), 1, 10)
-        skills_lower_expr = F.expr("transform(coalesce(skills, array()), x -> lower(trim(x)))")
-        skills_valid_expr = F.expr("filter(skills_lower, x -> length(x) > 0)")
-        skills_set_expr = F.array_distinct(skills_valid_expr)
-        
-        jobs_processed = jobs_df.withColumn("skills_lower", skills_lower_expr) \
-                                .withColumn("skills_lower_set", skills_set_expr) \
-                                .withColumn("skills_first10", skills_first10_expr)
-                                
-        reskilling_jobs = jobs_processed.filter(F.size(F.col("skills_lower_set")) > 0) \
-            .select("row_id", "title", "company", "city", "skills_first10", "skills_lower_set")
+def run(spark: SparkSession) -> None:
+    jobs_path = get_path("processed_jobs")
+    courses_path = get_path("processed_courses")
+    analytics_base = get_path("analytics")
 
-        # 2. reskilling_courses
-        tags_lower_expr = F.coalesce(F.col("skill_tags_lower"), F.array())
-        tags_valid_expr = F.expr("filter(tags_lower, x -> length(trim(x)) > 0)")
-        tags_set_expr = F.array_distinct(tags_valid_expr)
-        
-        reskilling_courses = courses_df.withColumn("tags_lower", tags_lower_expr) \
-            .withColumn("tags_lower_set", tags_set_expr) \
-            .select("course_id", "name", "source", "url", "tags_lower", "tags_lower_set")
+    jobs_df = spark.read.parquet(jobs_path)
+    courses_df = spark.read.parquet(courses_path)
 
-        # 3. reskilling_skill_index
-        jobs_exploded = reskilling_jobs.select(
-            F.lit("job").alias("kind"),
-            F.explode("skills_lower_set").alias("skill"),
-            F.col("row_id").alias("id")
+    # 1. reskilling_jobs
+    w_j = Window.orderBy("row_id")
+    reskill_jobs_df = (
+        jobs_df
+        .withColumn("seq", F.row_number().over(w_j))
+        .select(
+            F.col("seq"),
+            F.col("row_id"),
+            F.col("title"),
+            F.col("company"),
+            F.col("city").alias("location"),
+            F.col("experience"),
+            F.slice(F.col("skills"), 1, 10).alias("required_skills"),
         )
-        courses_exploded = reskilling_courses.select(
-            F.lit("course").alias("kind"),
-            F.explode("tags_lower_set").alias("skill"),
-            F.col("course_id").alias("id")
-        )
-        
-        union_index = jobs_exploded.unionByName(courses_exploded)
-        
-        reskilling_skill_index = union_index.groupBy("kind", "skill") \
-            .agg(F.sort_array(F.collect_set("id")).alias("ids"))
+    )
+    reskill_jobs_df.write.mode("overwrite").parquet(f"{analytics_base}/reskilling_jobs")
 
-        # Write outputs
-        outputs = {
-            "reskilling_jobs": reskilling_jobs,
-            "reskilling_courses": reskilling_courses,
-            "reskilling_skill_index": reskilling_skill_index
-        }
-        
-        for name, out_df in outputs.items():
-            out_path = f"{analytics_base}/{name}"
-            out_df.write.mode("overwrite").parquet(out_path)
-            
-            written_df = spark.read.parquet(out_path)
-            logger.info("Successfully wrote %d rows to %s", written_df.count(), out_path)
-            
-    except SystemExit:
-        raise
-    except Exception as e:
-        logger.error("FAIL: Job failed with exception: %s", e)
-        sys.exit(1)
-    finally:
-        if spark is not None:
-            spark.stop()
+    # 2. reskilling_courses
+    w_c = Window.orderBy("course_id")
+    reskill_courses_df = (
+        courses_df
+        .withColumn("seq", F.row_number().over(w_c))
+        .select(
+            F.col("seq"),
+            F.col("course_id"),
+            F.col("name"),
+            F.col("source"),
+            F.col("url"),
+            F.col("duration_weeks"),
+            F.col("duration_int"),
+            F.concat_ws(", ", F.col("skill_tags")).alias("skill_tags_lower_str"),
+        )
+    )
+    reskill_courses_df.write.mode("overwrite").parquet(f"{analytics_base}/reskilling_courses")
+
+    # 3. reskilling_skill_index: skill -> list[row_id]
+    exploded = (
+        jobs_df.select("row_id", F.explode("skills").alias("skill"))
+        .filter(F.length(F.col("skill")) > 0)
+        .withColumn("skill_lower", F.lower(F.col("skill")))
+    )
+    index_df = (
+        exploded.groupBy("skill_lower")
+        .agg(F.collect_list("row_id").alias("job_ids_list"))
+        .orderBy("skill_lower")
+    )
+    w_i = Window.orderBy("skill_lower")
+    skill_index_df = (
+        index_df
+        .withColumn("seq", F.row_number().over(w_i))
+        .select(
+            F.col("seq"),
+            F.col("skill_lower").alias("skill"),
+            F.col("job_ids_list"),
+        )
+    )
+    skill_index_df.write.mode("overwrite").parquet(f"{analytics_base}/reskilling_skill_index")
+
+    log.info("Finished reskilling_lookup successfully.")
+
 
 if __name__ == "__main__":
-    main()
+    spark = get_spark("skills_mirage_reskilling_lookup")
+    try:
+        run(spark)
+    finally:
+        spark.stop()

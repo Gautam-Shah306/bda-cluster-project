@@ -1,155 +1,195 @@
-"""Analytics: Hiring trends, skill trends, and skill gap.
+"""PySpark analytics job: trends and skill gap.
 
-Rules implemented:
-- hiring_trends: month key = first 7 characters of postdate if they match ^\d{4}-\d{2}$, else "Recent". Sorted by key ASC.
-- skill_trend_years: unique years = first 4 characters of postdate when all four are digits (as int). Sorted DESC.
-- skill_trends(year): keeps jobs whose year equals the given year (or all jobs for "all"). Kept jobs split by row_id order into previous (first mid jobs) and recent (rest, mid = max(1, n // 2)). Skills are case-sensitive. change = recent_count - previous_count. Rising = top 10 with change > 0. Declining = last 10 with change < 0 (kept in sorted order). 
-- skill_gap: demand = count of lower-cased job skill over ALL jobs. supply = count of tag in courses skill_tags_lower. gap = demand - supply. Top 10 by gap DESC.
-
-Known differences from reference:
-Spark has no inherent row order, so tie-breaking (which reference Counter does by first-seen) is done deterministically: count/gap/change DESC, then skill name ASC.
+Produces 4 Parquet result sets:
+  - analytics/hiring_trends: monthly posting counts
+  - analytics/skill_trend_years: available years for filtering
+  - analytics/skill_trends: rising and declining skills (half-split)
+  - analytics/skill_gap: top 10 market demand vs course supply
 """
-import sys
-from pathlib import Path
-from collections import defaultdict
+from __future__ import annotations
 
-# Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-from pyspark.sql import functions as F, Window
+from collections import Counter
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.window import Window
 
 from src.common.config import get_path
 from src.common.logging_setup import get_logger
 from src.common.spark_session import get_spark
 
-logger = get_logger("trends_and_gap")
+log = get_logger(__name__)
 
-def main() -> None:
-    spark = None
-    try:
-        jobs_uri = get_path("processed/jobs")
-        courses_uri = get_path("processed/courses")
-        analytics_base = get_path("analytics").rstrip("/")
-        
-        spark = get_spark("trends_and_gap")
-        logger.info("Reading processed data from %s and %s", jobs_uri, courses_uri)
-        
-        try:
-            jobs_df = spark.read.parquet(jobs_uri)
-            courses_df = spark.read.parquet(courses_uri)
-        except Exception as e:
-            if "Path does not exist" in str(e):
-                logger.error("FAIL: Input path does not exist: %s", e)
-                sys.exit(1)
-            raise
 
-        # 1. hiring_trends
-        first_7 = F.substring(F.col("postdate"), 1, 7)
-        month_expr = F.when(first_7.rlike(r"^\d{4}-\d{2}$"), first_7).otherwise("Recent")
-        hiring_trends_df = jobs_df.withColumn("month", month_expr) \
-            .groupBy("month").agg(F.count("*").alias("job_count")) \
-            .orderBy(F.asc("month"))
+def run(spark: SparkSession) -> None:
+    jobs_path = get_path("processed_jobs")
+    courses_path = get_path("processed_courses")
+    analytics_base = get_path("analytics")
 
-        # 2. skill_trend_years
-        first_4 = F.substring(F.col("postdate"), 1, 4)
-        year_expr = F.when(first_4.rlike(r"^\d{4}$"), first_4.cast("int")).otherwise(None)
-        jobs_year_df = jobs_df.withColumn("year", year_expr)
-        
-        skill_trend_years_df = jobs_year_df.filter(F.col("year").isNotNull()) \
-            .select("year").distinct().orderBy(F.desc("year"))
+    jobs_df = spark.read.parquet(jobs_path)
+    courses_df = spark.read.parquet(courses_path)
 
-        # 3. skill_trends
-        yk_expr = F.when(F.col("year").isNotNull(), F.array(F.lit("all"), F.col("year").cast("string"))) \
-                   .otherwise(F.array(F.lit("all")))
-        st_base = jobs_year_df.withColumn("year_key", F.explode(yk_expr))
-        
-        window_yk = Window.partitionBy("year_key").orderBy("row_id")
-        st_ranked = st_base.withColumn("rn", F.row_number().over(window_yk)) \
-                           .withColumn("n", F.count("*").over(Window.partitionBy("year_key")))
-        
-        st_grouped = st_ranked.withColumn("mid", F.greatest(F.lit(1), F.floor(F.col("n") / 2))) \
-                              .withColumn("group", F.when(F.col("rn") <= F.col("mid"), "previous").otherwise("recent"))
+    # 1. hiring_trends: month = first 7 chars of postdate
+    month_col = F.when(
+        F.col("postdate").rlike(r"^\d{4}-\d{2}"),
+        F.substring(F.col("postdate"), 1, 7)
+    ).otherwise(F.lit("Recent"))
 
-        st_skills = st_grouped.select("year_key", "group", F.explode("skills").alias("skill"))
-        st_counts = st_skills.groupBy("year_key", "skill").agg(
-            F.sum(F.when(F.col("group") == "recent", 1).otherwise(0)).alias("recent_count"),
-            F.sum(F.when(F.col("group") == "previous", 1).otherwise(0)).alias("previous_count")
-        ).withColumn("change", F.col("recent_count") - F.col("previous_count"))
+    hiring_counts = (
+        jobs_df.withColumn("month", month_col)
+        .groupBy("month").count()
+        .orderBy("month")
+    )
+    w_m = Window.orderBy("month")
+    hiring_df = (
+        hiring_counts
+        .withColumn("seq", F.row_number().over(w_m))
+        .select(
+            F.col("seq"),
+            F.col("month"),
+            F.col("count").alias("job_count"),
+        )
+    )
+    hiring_df.write.mode("overwrite").parquet(f"{analytics_base}/hiring_trends")
 
-        window_rising = Window.partitionBy("year_key").orderBy(F.desc("change"), F.asc("skill"))
-        rising_df = st_counts.filter(F.col("change") > 0) \
-            .withColumn("rank", F.row_number().over(window_rising)) \
-            .filter(F.col("rank") <= 10) \
-            .withColumn("kind", F.lit("rising")) \
-            .select("year_key", "kind", "rank", F.col("skill").alias("name"), "change")
+    # 2. skill_trend_years
+    year_col = F.when(
+        F.col("postdate").rlike(r"^\d{4}"),
+        F.substring(F.col("postdate"), 1, 4).cast("integer")
+    ).otherwise(F.lit(None))
 
-        window_bottom = Window.partitionBy("year_key").orderBy(F.asc("change"), F.desc("skill"))
-        declining_filtered = st_counts.filter(F.col("change") < 0) \
-            .withColumn("bottom_rank", F.row_number().over(window_bottom)) \
-            .filter(F.col("bottom_rank") <= 10)
+    years_df = (
+        jobs_df.withColumn("year", year_col)
+        .filter(F.col("year").isNotNull())
+        .select("year")
+        .distinct()
+        .orderBy(F.desc("year"))
+    )
+    w_y = Window.orderBy(F.desc("year"))
+    skill_years_df = years_df.withColumn("seq", F.row_number().over(w_y))
+    skill_years_df.write.mode("overwrite").parquet(f"{analytics_base}/skill_trend_years")
 
-        declining_df = declining_filtered.withColumn("rank", F.row_number().over(window_rising)) \
-            .withColumn("kind", F.lit("declining")) \
-            .select("year_key", "kind", "rank", F.col("skill").alias("name"), "change")
+    # 3. skill_trends (rising & declining skills)
+    rows = (
+        jobs_df.withColumn("year", year_col)
+        .select("row_id", "year", "skills")
+        .collect()
+    )
 
-        skill_trends_df = rising_df.unionByName(declining_df)
+    available_years = sorted({r["year"] for r in rows if r["year"] is not None}, reverse=True)
+    all_filters = ["all"] + [str(y) for y in available_years]
 
-        bottom_whole = st_counts.withColumn("bottom_rank", F.row_number().over(window_bottom)) \
-            .filter(F.col("bottom_rank") <= 10) \
-            .filter(F.col("change") < 0)
+    trend_docs = []
+    seq_counter = 1
 
-        dec_1 = declining_filtered.select("year_key", "skill").collect()
-        dec_2 = bottom_whole.select("year_key", "skill").collect()
-        d1_map = defaultdict(set)
-        d2_map = defaultdict(set)
-        for row in dec_1: d1_map[row["year_key"]].add(row["skill"])
-        for row in dec_2: d2_map[row["year_key"]].add(row["skill"])
+    for yf in all_filters:
+        if yf == "all":
+            subset = sorted(rows, key=lambda x: x["row_id"])
+        else:
+            y_int = int(yf)
+            subset = sorted([r for r in rows if r["year"] == y_int], key=lambda x: x["row_id"])
 
-        for yk in set(d1_map.keys()).union(set(d2_map.keys())):
-            if d1_map[yk] != d2_map[yk]:
-                logger.info("Ambiguity difference for year_key %s: filtered_first=%s, whole_first=%s", yk, d1_map[yk], d2_map[yk])
-            else:
-                logger.info("Ambiguity check for year_key %s: both readings yield identical declining sets.", yk)
+        n = len(subset)
+        if n < 2:
+            continue
+        mid = max(1, n // 2)
+        prev_rows = subset[:mid]
+        recent_rows = subset[mid:]
 
-        # 4. skill_gap
-        demand_df = jobs_df.select(F.explode("skills").alias("raw_skill")) \
-            .withColumn("skill", F.lower(F.col("raw_skill"))) \
-            .groupBy("skill").agg(F.count("*").alias("market_demand"))
+        prev_counts = Counter()
+        for r in prev_rows:
+            for s in r["skills"]:
+                if s:
+                    prev_counts[s] += 1
 
-        supply_df = courses_df.select(F.explode("skill_tags_lower").alias("skill")) \
-            .groupBy("skill").agg(F.count("*").alias("training_supply"))
+        recent_counts = Counter()
+        for r in recent_rows:
+            for s in r["skills"]:
+                if s:
+                    recent_counts[s] += 1
 
-        gap_base = demand_df.join(supply_df, "skill", "left").fillna({"training_supply": 0})
-        gap_base = gap_base.withColumn("gap", F.col("market_demand") - F.col("training_supply"))
+        all_skills = set(prev_counts.keys()) | set(recent_counts.keys())
+        diffs = []
+        for s in all_skills:
+            diff = recent_counts[s] - prev_counts[s]
+            diffs.append((s, diff, recent_counts[s] + prev_counts[s]))
 
-        window_gap = Window.orderBy(F.desc("gap"), F.asc("skill"))
-        skill_gap_df = gap_base.withColumn("rank", F.row_number().over(window_gap)) \
-            .filter(F.col("rank") <= 10) \
-            .select("rank", "skill", "market_demand", "training_supply", "gap")
+        rising = sorted([d for d in diffs if d[1] > 0], key=lambda x: (-x[1], x[0]))[:10]
+        declining = sorted([d for d in diffs if d[1] < 0], key=lambda x: (x[1], x[0]))[:10]
 
-        # Write outputs
-        outputs = {
-            "hiring_trends": hiring_trends_df,
-            "skill_trend_years": skill_trend_years_df,
-            "skill_trends": skill_trends_df,
-            "skill_gap": skill_gap_df
-        }
-        
-        for name, out_df in outputs.items():
-            out_path = f"{analytics_base}/{name}"
-            out_df.write.mode("overwrite").parquet(out_path)
-            
-            written_df = spark.read.parquet(out_path)
-            logger.info("Successfully wrote %d rows to %s", written_df.count(), out_path)
-            
-    except SystemExit:
-        raise
-    except Exception as e:
-        logger.error("FAIL: Job failed with exception: %s", e)
-        sys.exit(1)
-    finally:
-        if spark is not None:
-            spark.stop()
+        for s, diff, _ in rising:
+            trend_docs.append({
+                "seq": seq_counter,
+                "year_filter": yf,
+                "type": "rising",
+                "name": s,
+                "growth": f"+{diff}",
+                "decline": None,
+                "color": "from-blue-500 to-cyan-400",
+            })
+            seq_counter += 1
+
+        for s, diff, _ in declining:
+            trend_docs.append({
+                "seq": seq_counter,
+                "year_filter": yf,
+                "type": "declining",
+                "name": s,
+                "growth": None,
+                "decline": str(diff),
+                "color": "from-amber-500 to-rose-400",
+            })
+            seq_counter += 1
+
+    if trend_docs:
+        trends_df = spark.createDataFrame(trend_docs)
+        trends_df.write.mode("overwrite").parquet(f"{analytics_base}/skill_trends")
+
+    # 4. skill_gap: market demand vs course supply (lower-cased)
+    job_skills_exploded = (
+        jobs_df.select(F.explode("skills").alias("skill"))
+        .filter(F.length(F.col("skill")) > 0)
+        .withColumn("skill_lower", F.lower(F.col("skill")))
+    )
+    demand_df = (
+        job_skills_exploded.groupBy("skill_lower")
+        .agg(F.count("*").alias("market_demand"))
+    )
+
+    course_tags_exploded = (
+        courses_df.select(F.explode("skill_tags").alias("tag"))
+        .filter(F.length(F.col("tag")) > 0)
+        .withColumn("tag_lower", F.lower(F.col("tag")))
+    )
+    supply_df = (
+        course_tags_exploded.groupBy("tag_lower")
+        .agg(F.count("*").alias("training_supply"))
+    )
+
+    gap_joined = (
+        demand_df.join(supply_df, demand_df["skill_lower"] == supply_df["tag_lower"], how="left")
+        .fillna({"training_supply": 0})
+        .withColumn("gap", F.col("market_demand") - F.col("training_supply"))
+        .orderBy(F.desc("gap"), F.asc("skill_lower"))
+        .limit(10)
+    )
+
+    w_gap = Window.orderBy(F.desc("gap"), F.asc("skill_lower"))
+    gap_df = (
+        gap_joined.withColumn("seq", F.row_number().over(w_gap))
+        .select(
+            F.col("seq"),
+            F.col("skill_lower").alias("skill"),
+            F.col("market_demand"),
+            F.col("training_supply"),
+            F.col("gap"),
+        )
+    )
+    gap_df.write.mode("overwrite").parquet(f"{analytics_base}/skill_gap")
+    log.info("Finished trends_and_gap successfully.")
+
 
 if __name__ == "__main__":
-    main()
+    spark = get_spark("skills_mirage_trends_and_gap")
+    try:
+        run(spark)
+    finally:
+        spark.stop()

@@ -1,5 +1,13 @@
-"""MongoDB client module."""
+"""MongoDB client factory for the Skills Mirage project.
+
+Provides get_db() which loads credentials from .env and returns the
+project database object. The connection URI is never printed in full;
+it is masked in log output.
+"""
+from __future__ import annotations
+
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,54 +16,36 @@ from pymongo.database import Database
 
 from src.common.logging_setup import get_logger
 
-logger = get_logger("mongo_client")
+log = get_logger(__name__)
 
-# Load .env file from the repo root
-repo_root = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=repo_root / ".env", override=False)
+_ENV_PATH = Path(__file__).parents[2] / ".env"
 
-# Keep a global client to reuse connections
-_client: MongoClient | None = None
+
+def _mask_uri(uri: str) -> str:
+    """Mask credentials in a MongoDB URI for safe logging."""
+    return re.sub(r"//([^:@/]+:[^@/]+)@", "//***@", uri)
+
 
 def get_db() -> Database:
-    """Initialize and return a MongoDB Database instance.
-    
-    Loads configuration from environment variables MONGO_URI and MONGO_DB,
-    falling back to values in .env. Fails with a clear error if they are missing.
-    Pings the database to ensure connectivity.
-    
+    """Load .env, connect to MongoDB, and return the project database.
+
     Returns:
-        pymongo.database.Database: The database instance.
-        
+        A pymongo Database object for the skills_mirage database.
+
     Raises:
-        ValueError: If MONGO_URI or MONGO_DB are not set.
-        Exception: If the connection ping fails.
+        RuntimeError: if MONGO_URI or MONGO_DB is not set, or if the
+            server cannot be reached within the timeout.
     """
-    global _client
-    
-    mongo_uri = os.environ.get("MONGO_URI")
-    mongo_db_name = os.environ.get("MONGO_DB")
-    
-    if not mongo_uri or not mongo_db_name:
-        raise ValueError("MONGO_URI and MONGO_DB environment variables must be set.")
-        
-    if _client is None:
-        try:
-            _client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-            # Ping the server
-            _client.admin.command('ping')
-            
-            # Mask the URI for logging
-            masked_uri = mongo_uri
-            if "@" in mongo_uri:
-                protocol_part = mongo_uri.split("://", 1)[0]
-                host_part = mongo_uri.rsplit("@", 1)[1]
-                masked_uri = f"{protocol_part}://***@{host_part}"
-                
-            logger.info("Successfully connected to MongoDB at %s, database: %s", masked_uri, mongo_db_name)
-        except Exception as e:
-            logger.error("FAIL: Failed to connect to MongoDB: %s", e)
-            _client = None
-            raise
-            
-    return _client[mongo_db_name]
+    load_dotenv(_ENV_PATH)
+    uri = os.environ.get("MONGO_URI")
+    db_name = os.environ.get("MONGO_DB", "skills_mirage_db")
+    if not uri:
+        raise RuntimeError(
+            "MONGO_URI is not set. Add it to your .env file."
+        )
+    log.info("Connecting to MongoDB at %s (db=%s)", _mask_uri(uri), db_name)
+    client: MongoClient = MongoClient(uri, serverSelectionTimeoutMS=5000)
+    # Trigger a connection to verify reachability.
+    client.admin.command("ping")
+    log.info("MongoDB connection established.")
+    return client[db_name]

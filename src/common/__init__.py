@@ -1,1 +1,1 @@
-"""Common modules."""
+"""Skills Mirage common utilities."""

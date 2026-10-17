@@ -1,1 +1,1 @@
-"""Root package."""
+"""Skills Mirage source package."""

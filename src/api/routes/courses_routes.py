@@ -1,165 +1,107 @@
-"""Courses routes."""
-from typing import List, Optional
+"""FastAPI router for course-related endpoints.
 
-from fastapi import APIRouter, HTTPException, Query
+Serves courses from MongoDB res_courses collection (precomputed by the pipeline).
+Falls back to an empty list if the collection is empty or not yet loaded.
+"""
+import logging
+from typing import Optional
+from fastapi import APIRouter, Query
 
 from src.common.mongo_client import get_db
 
-router = APIRouter(prefix="", tags=["Courses"])  # prefix is handled, wait, endpoints are /courses, /courses/stats etc. So prefix="/courses"
+logger = logging.getLogger(__name__)
 
-def get_all_courses() -> list:
-    """Load all courses from res_courses sorted by seq."""
-    docs = get_db()["res_courses"].find(
-        {},
-        {"_id": 0, "seq": 0, "course_id": 0}
-    ).sort("seq", 1)
-    return list(docs)
-
-def query_courses_for_skills(skills: list, max_results: int) -> list:
-    """Find courses matching skills."""
-    wanted = {s.lower() for s in skills}
-    courses = get_all_courses()
-    
-    scored_courses = []
-    for c in courses:
-        tags = set(t.lower() for t in c.get("skill_tags", []))
-        
-        name = c.get("name") or ""
-        domain = c.get("domain") or ""
-        words = set((name + " " + domain).lower().split())
-        
-        searchable = tags.union(words)
-        overlap = len(wanted & searchable)
-        
-        if overlap > 0:
-            scored_courses.append((overlap, c))
-            
-    # Sort stable by overlap descending
-    scored_courses.sort(key=lambda x: x[0], reverse=True)
-    
-    return [c for overlap, c in scored_courses][:max_results]
+router = APIRouter()
 
 
-def query_courses_for_reskilling(target_role: str, current_skills: list, max_weeks: Optional[int], max_results: int) -> list:
-    """Find courses for reskilling."""
-    terms = target_role.lower().split() + [s.lower() for s in current_skills]
-    candidates = query_courses_for_skills(terms, max_results=50)
-    
-    if max_weeks is not None:
-        filtered = []
-        for c in candidates:
-            dw = c.get("duration_weeks")
-            if dw is None:
-                filtered.append(c)
-            else:
-                # duration_weeks of 0 counts as 999
-                eff_dw = dw or 999
-                if eff_dw <= max_weeks:
-                    filtered.append(c)
-        candidates = filtered
-        
-    return candidates[:max_results]
+def _get_courses() -> list:
+    """Fetch all courses from the res_courses MongoDB collection."""
+    try:
+        db = get_db()
+        return list(db["res_courses"].find({}, {"_id": 0}).sort("seq", 1))
+    except Exception as exc:
+        logger.error("Error fetching courses from MongoDB: %s", exc)
+        return []
 
 
 @router.get("/courses")
-def get_courses(
-    source: Optional[str] = Query(None),
-    domain: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0)
-) -> dict:
-    """Get courses with filters."""
-    courses = get_all_courses()
-    
+def list_courses(
+    source: Optional[str] = Query(None, description="Filter by source: SWAYAM or NPTEL"),
+    domain: Optional[str] = Query(None, description="Filter by domain/discipline"),
+    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Return all courses, optionally filtered by source or domain. Paginated via limit/offset."""
+    courses = _get_courses()
+
     if source:
-        courses = [c for c in courses if (c.get("source") or "") == source.upper()]
-        
+        courses = [c for c in courses if c.get("source", "").upper() == source.upper()]
     if domain:
         domain_lower = domain.lower()
-        courses = [c for c in courses if domain_lower in (c.get("domain") or "").lower()]
-        
+        courses = [c for c in courses if domain_lower in c.get("domain", "").lower()]
+
     total = len(courses)
-    filtered = courses[offset:offset+limit]
-    
-    return {
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "courses": filtered
-    }
+    page = courses[offset: offset + limit]
+    return {"total": total, "offset": offset, "limit": limit, "courses": page}
+
 
 @router.get("/courses/stats")
-def get_courses_stats() -> dict:
-    """Get course statistics."""
-    courses = get_all_courses()
-    if not courses:
-        return {"total": 0, "swayam": 0, "nptel": 0, "domains": []}
-        
-    total = len(courses)
-    swayam = sum(1 for c in courses if (c.get("source") or "") == "SWAYAM")
-    nptel = sum(1 for c in courses if (c.get("source") or "") == "NPTEL")
-    
-    domains = {c.get("domain") for c in courses if c.get("domain")}
-    sorted_domains = sorted(list(domains))
-    
-    return {
-        "total": total,
-        "swayam": swayam,
-        "nptel": nptel,
-        "domains": sorted_domains
-    }
+def courses_stats():
+    """Dataset statistics – total count and breakdown by source."""
+    courses = _get_courses()
+    by_source: dict = {}
+    for c in courses:
+        src = c.get("source", "Unknown")
+        by_source[src] = by_source.get(src, 0) + 1
+    domains = list({c.get("domain", "") for c in courses if c.get("domain")})
+    return {"total": len(courses), "by_source": by_source, "domains": domains}
+
 
 @router.get("/courses/for-skills")
-def get_courses_for_skills(
-    skills: str = Query(...),
-    max_results: int = Query(20, ge=1, le=50)
-) -> dict:
-    """Get courses matching specific skills."""
-    skills_list = [s.strip() for s in skills.split(",")]
-    skills_list = [s for s in skills_list if s]
-    
-    if not skills_list:
+def courses_for_skills(
+    skills: str = Query(..., description="Comma-separated skill names"),
+    max_results: int = Query(20, le=50),
+):
+    """Return courses that match the requested skill names."""
+    skill_list = [s.strip().lower() for s in skills.split(",") if s.strip()]
+    if not skill_list:
         return {"courses": [], "skills_queried": []}
-        
-    matched = query_courses_for_skills(skills_list, max_results)
-    
-    return {
-        "courses": matched,
-        "skills_queried": skills_list
-    }
+    courses = _get_courses()
+    results = []
+    for c in courses:
+        tags = [t.lower() for t in (c.get("skill_tags_orig", "") or "").split(",") if t.strip()]
+        if any(sk in tags for sk in skill_list):
+            results.append(c)
+        if len(results) >= max_results:
+            break
+    return {"courses": results, "skills_queried": skill_list}
+
 
 @router.get("/courses/reskilling")
-def get_courses_reskilling(
-    target_role: str = Query(...),
+def courses_for_reskilling(
+    target_role: str = Query(..., description="Target job role"),
     current_skills: Optional[str] = Query(None),
     max_weeks: Optional[int] = Query(None),
-    max_results: int = Query(10, ge=1, le=30)
-) -> dict:
-    """Get reskilling courses."""
-    current_list = []
-    if current_skills:
-        current_list = [s.strip() for s in current_skills.split(",")]
-        current_list = [s for s in current_list if s]
-        
-    courses = query_courses_for_reskilling(target_role, current_list, max_weeks, max_results)
-    
-    return {
-        "target_role": target_role,
-        "max_weeks": max_weeks,
-        "courses": courses
-    }
+    max_results: int = Query(10, le=30),
+):
+    """Return courses relevant for transitioning to target_role."""
+    courses = _get_courses()
+    role_lower = target_role.lower()
+    results = []
+    for c in courses:
+        tags = (c.get("skill_tags_orig", "") or "").lower()
+        if role_lower in tags or any(w in tags for w in role_lower.split()):
+            if max_weeks is None or (c.get("duration_int") or 0) <= max_weeks:
+                results.append(c)
+        if len(results) >= max_results:
+            break
+    return {"target_role": target_role, "max_weeks": max_weeks, "courses": results}
+
 
 @router.post("/scrape/courses")
-def scrape_courses(
-    swayam: bool = Query(True),
-    nptel: bool = Query(True)
-) -> dict:
-    """Scrape courses (disabled)."""
+def trigger_courses_scrape():
+    """Scraping is disabled in this deployment."""
     return {
         "status": "disabled",
-        "message": "Course scraping runs as a separate ingestion step.",
-        "sources": {
-            "swayam": swayam,
-            "nptel": nptel
-        }
+        "message": "Course scraping is not available in this deployment.",
     }

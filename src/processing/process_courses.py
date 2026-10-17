@@ -1,89 +1,90 @@
-"""Courses processing module."""
-import sys
-from pathlib import Path
+"""PySpark job to normalise the raw courses CSV.
 
-# Add repo root to sys.path so it can be run from anywhere without PYTHONPATH
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+Reads dataset/raw/courses/courses.csv (9 columns, 398 rows) and writes
+a Parquet dataset to dataset/processed/courses/ with additional columns:
 
-from pyspark.sql import functions as F, Window
-from pyspark.sql.types import ArrayType, StringType
+  course_id       int   0-based row position
+  skill_tags      array<str>  lower-cased, trimmed tags from skill_tags string
+  skill_tags_orig array<str>  original-case tags
+  duration_int    int   integer weeks (None if unparseable)
+  syllabus_list   array<str>  parsed syllabus_weeks JSON list
+
+Original 9 columns are preserved.
+"""
+from __future__ import annotations
+
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.types import ArrayType, IntegerType, StringType
+from pyspark.sql.window import Window
 
 from src.common.config import get_path
 from src.common.logging_setup import get_logger
 from src.common.spark_session import get_spark
 
-logger = get_logger("process_courses")
+log = get_logger(__name__)
 
-def main() -> None:
-    """Run the courses processing logic."""
-    spark = None
-    try:
-        input_uri = get_path("raw/courses")
-        output_uri = get_path("processed/courses")
-        
-        spark = get_spark("process_courses")
-        logger.info("Reading input from: %s", input_uri)
-        
-        try:
-            df = spark.read.csv(
-                input_uri,
-                header=True,
-                inferSchema=False,
-                multiLine=True,
-                quote='"',
-                escape='"'
+
+def run(spark: SparkSession) -> None:
+    """Execute the courses processing job."""
+    raw_path = get_path("raw_courses")
+    out_path = get_path("processed_courses")
+    log.info("Reading raw courses from: %s", raw_path)
+
+    schema_cols = [
+        "name", "source", "domain", "url", "institution",
+        "duration_weeks", "difficulty", "skill_tags", "syllabus_weeks",
+    ]
+
+    df = (
+        spark.read
+        .option("header", "true")
+        .option("encoding", "UTF-8")
+        .csv(raw_path)
+        .fillna("")
+    )
+
+    existing = set(df.columns)
+    for col in schema_cols:
+        if col not in existing:
+            df = df.withColumn(col, F.lit(""))
+    df = df.select(*schema_cols)
+
+    df = df.withColumn("_mid", F.monotonically_increasing_id())
+    w = Window.orderBy("_mid")
+    df = df.withColumn("course_id", (F.row_number().over(w) - 1).cast("integer"))
+    df = df.drop("_mid")
+
+    tags_raw = F.split(F.col("skill_tags"), ",")
+    df = df.withColumn("skill_tags_orig", F.filter(F.transform(tags_raw, F.trim), lambda x: F.length(x) > 0))
+    df = df.withColumn("skill_tags", F.transform(F.col("skill_tags_orig"), F.lower))
+
+    df = df.withColumn(
+        "duration_int",
+        F.regexp_extract(F.col("duration_weeks"), r"(\d+)", 1).cast(IntegerType()),
+    )
+
+    df = df.withColumn(
+        "syllabus_list",
+        F.when(
+            F.col("syllabus_weeks").startswith("["),
+            F.from_json(F.col("syllabus_weeks"), ArrayType(StringType())),
+        ).otherwise(
+            F.filter(
+                F.transform(F.split(F.col("syllabus_weeks"), ","), F.trim),
+                lambda x: F.length(x) > 0,
             )
-        except Exception as e:
-            if "Path does not exist" in str(e):
-                logger.error("FAIL: Input path does not exist: %s", input_uri)
-                sys.exit(1)
-            raise
-            
-        # Add course_id: 0-based position in CSV (D-018)
-        window_spec = Window.orderBy(F.monotonically_increasing_id())
-        df = df.withColumn("course_id", (F.row_number().over(window_spec) - 1).cast("long"))
-            
-        # 1. Fill nulls with ""
-        df = df.fillna("")
-        
-        # 2. skill_tags: array<string>, split on commas, trim, drop empty, keep original case
-        skills_expr = F.expr(
-            "filter(transform(split(skill_tags, ','), x -> trim(x)), x -> length(x) > 0)"
-        )
-        
-        # 4. duration_weeks: cast to float then to int. Empty/invalid becomes null
-        duration_expr = F.col("duration_weeks").cast("float").cast("int")
-        
-        # 5. syllabus_weeks: parse JSON array, fallback to empty array
-        schema = ArrayType(StringType())
-        syllabus_expr = F.coalesce(F.from_json(F.col("syllabus_weeks"), schema), F.array())
-        
-        # Build final DataFrame
-        processed_df = df.withColumn("skill_tags", skills_expr) \
-                         .withColumn("skill_tags_lower", F.expr("transform(skill_tags, x -> lower(x))")) \
-                         .withColumn("duration_weeks", duration_expr) \
-                         .withColumn("syllabus_weeks", syllabus_expr)
-                         
-        # Make course_id the first column
-        cols = ["course_id"] + [c for c in processed_df.columns if c != "course_id"]
-        processed_df = processed_df.select(*cols)
-                         
-        logger.info("Writing output to: %s", output_uri)
-        processed_df.write.mode("overwrite").parquet(output_uri)
-        
-        # Log row count from written output
-        written_df = spark.read.parquet(output_uri)
-        count = written_df.count()
-        logger.info("Successfully processed and wrote %d rows.", count)
-        
-    except SystemExit:
-        raise
-    except Exception as e:
-        logger.error("FAIL: Job failed with exception: %s", e)
-        sys.exit(1)
-    finally:
-        if spark is not None:
-            spark.stop()
+        ),
+    )
+
+    count = df.count()
+    log.info("Writing %d processed course rows to: %s", count, out_path)
+    df.write.mode("overwrite").parquet(out_path)
+    log.info("Successfully processed and wrote %d rows.", count)
+
 
 if __name__ == "__main__":
-    main()
+    spark = get_spark("skills_mirage_process_courses")
+    try:
+        run(spark)
+    finally:
+        spark.stop()

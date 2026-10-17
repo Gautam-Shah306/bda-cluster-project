@@ -1,33 +1,63 @@
-"""Spark session setup module."""
+"""PySpark session factory for the Skills Mirage pipeline.
+
+Provides a single get_spark() function that returns a SparkSession configured
+for either local or cluster (YARN) mode, driven by the pipeline config.
+"""
+from __future__ import annotations
+
 import os
 import sys
+from pathlib import Path
+
 from pyspark.sql import SparkSession
+
 from src.common.config import get_config, get_mode
 from src.common.logging_setup import get_logger
 
-logger = get_logger(__name__)
+log = get_logger(__name__)
 
-def get_spark(app_name: str | None = None) -> SparkSession:
-    """Returns a configured SparkSession based on the active mode."""
-    # Ensure PySpark uses the current Python executable
-    os.environ["PYSPARK_PYTHON"] = sys.executable
-    os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
-    
-    config = get_config()
+
+def get_spark(app_name: str) -> SparkSession:
+    """Create or retrieve a SparkSession for the given application name.
+
+    In local mode, runs as local[*] with no Hive support.
+    In cluster mode, connects to YARN and enables Hive support.
+
+    Args:
+        app_name: A short human-readable name for the Spark application.
+
+    Returns:
+        A configured SparkSession.
+    """
     mode = get_mode()
-    
-    name = app_name or config.get("spark", {}).get("app_name", "SkillsMirage")
-    
-    builder = SparkSession.builder.appName(name)
-    
+    cfg = get_config()
+    spark_cfg = cfg.get("spark", {})
+
+    python_exec = sys.executable
+    os.environ.setdefault("PYSPARK_PYTHON", python_exec)
+    os.environ.setdefault("PYSPARK_DRIVER_PYTHON", python_exec)
+
+    builder = (
+        SparkSession.builder
+        .appName(app_name)
+        .config("spark.driver.memory", spark_cfg.get("driver_memory", "2g"))
+        .config("spark.executor.memory", spark_cfg.get("executor_memory", "2g"))
+        .config("spark.sql.shuffle.partitions", str(spark_cfg.get("sql_shuffle_partitions", 8)))
+    )
+
     if mode == "local":
-        master = config.get("spark", {}).get("local_master", "local[*]")
-        shuffle_parts = str(config.get("spark", {}).get("shuffle_partitions", 2))
-        builder = builder.master(master).config("spark.sql.shuffle.partitions", shuffle_parts)
+        builder = builder.master("local[*]")
+        log.info("Starting Spark in local mode for app: %s", app_name)
     else:
-        master = config.get("cluster", {}).get("spark_master", "yarn")
-        builder = builder.master(master).enableHiveSupport()
-        
-    logger.info("Starting SparkSession with mode=%s, master=%s", mode, master)
-    
-    return builder.getOrCreate()
+        master = cfg["cluster"].get("spark_master", "yarn")
+        builder = (
+            builder
+            .master(master)
+            .enableHiveSupport()
+        )
+        log.info("Starting Spark on %s for app: %s", master, app_name)
+
+    spark = builder.getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    log.info("SparkSession ready: %s", spark.version)
+    return spark

@@ -1,22 +1,20 @@
-"""Worker profile parser."""
+def parse_worker_profile(profile):
+    writeup = profile["writeup"]
 
-def parse_worker_profile(profile: dict) -> dict:
-    """Parse legacy worker profile into deterministic schema."""
-    writeup = profile.get("writeup", "").lower()
-    
-    # We build the skills ordered list starting empty (as assumed).
     skills = []
-    
-    if "excel" in writeup:
+
+    if "excel" in writeup.lower():
         skills.append("excel")
-    if "crm" in writeup:
+
+    if "crm" in writeup.lower():
         skills.append("crm")
-    if "customer" in writeup:
+
+    if "customer" in writeup.lower():
         skills.append("customer_support")
-        
+
     return {
-        "role": profile.get("job_title"),
-        "city": profile.get("city"),
-        "experience": profile.get("experience_years"),
-        "skills": skills
+        "role": profile["job_title"],
+        "city": profile["city"],
+        "experience": profile["experience_years"],
+        "skills": skills,
     }

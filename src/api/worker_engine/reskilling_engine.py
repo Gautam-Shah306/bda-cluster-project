@@ -1,214 +1,272 @@
-"""Worker reskilling engine."""
+"""
+Gemini-powered reskilling engine.
+
+Uses hiring trend data from naukri_jobs.csv and course data from courses.csv
+to build a rich context prompt, then asks Gemini to produce personalised
+reskilling / upskilling recommendations.
+"""
+
+import os
 import json
 import re
-from typing import List, Dict, Tuple, Set, Any
+import logging
+from dotenv import load_dotenv
+from google import genai
 
-from src.common.mongo_client import get_db
-from src.api.worker_engine.gemini_client import generate_text, mask_secrets, GeminiNotConfigured
+from data.dataset_manager import get_all_jobs, get_all_courses
+from intelligence.skill_trends import compute_skill_trends
 
-SYSTEM_PROMPT = """You are an AI career guidance assistant analyzing a worker's profile, automation risk, market trends, available training courses, and job openings.
-Based on the market demand, if the worker's field or target roles are seeing INCREASING demand, recommend "upskilling". If they are seeing DECLINING demand, recommend "reskilling".
-You must recommend skills that align with the provided courses and job openings. The recommended courses and jobs must be selected ONLY from the provided lists.
-Create a week-by-week learning path (e.g., "Week 1-2") tailored to the recommended skills.
+load_dotenv()
+logger = logging.getLogger(__name__)
 
-You must reply ONLY with valid JSON matching this exact structure (no markdown formatting, no prose):
+# ---------------------------------------------------------------------------
+# Prompt template
+# ---------------------------------------------------------------------------
+SYSTEM_PROMPT = """You are a career guidance AI. You will receive:
+1. A worker's current profile (job title, city, experience, skills).
+2. Their AI-risk assessment (risk_score 0-100, risk_level, pivot_roles, new_skills).
+3. Market hiring trends: rising skills and declining skills with growth numbers.
+4. A list of available training courses (with name, source, url, duration, skill_tags).
+5. A list of relevant job openings (with title, company, location, skills).
+
+Your task:
+- If the worker's current field has INCREASING hiring demand → recommend UPSKILLING
+  (deeper skills in the same domain).
+- If the worker's current field has DECLINING hiring demand → recommend RESKILLING
+  (transition skills from growing fields).
+- For every recommended skill, match it to courses from the provided course list.
+- Match the worker's existing + recommended skills to jobs from the provided job list.
+- Generate a realistic weekly learning path / timeline.
+
+IMPORTANT: Respond ONLY with valid JSON in this exact format, no extra text:
 {
-  "recommendation_type": "<upskilling|reskilling>",
-  "summary": "<your overall recommendation summary>",
-  "recommended_skills": [{"skill": "<skill_name>", "reason": "<reasoning>"}],
-  "recommended_courses": [{"name": "<course_name>", "source": "<source>", "url": "<url>", "duration": "<duration text>", "matched_skills": ["<skill1>"]}],
-  "recommended_jobs": [{"title": "<job_title>", "company": "<company_name>", "location": "<location>", "required_skills": ["<skill1>"], "match_reason": "<reasoning>"}],
-  "learning_path": [{"week": "<e.g. Week 1-2>", "title": "<phase title>", "description": "<description>"}]
-}"""
+  "recommendation_type": "upskilling" or "reskilling",
+  "summary": "Brief 2-3 sentence explanation of the recommendation strategy.",
+  "recommended_skills": [
+    {"skill": "skill name", "reason": "why this skill is recommended"}
+  ],
+  "recommended_courses": [
+    {
+      "name": "course name",
+      "source": "NPTEL/SWAYAM/etc",
+      "url": "course url",
+      "duration": "duration string",
+      "matched_skills": ["skill1", "skill2"]
+    }
+  ],
+  "recommended_jobs": [
+    {
+      "title": "job title",
+      "company": "company name",
+      "location": "city",
+      "required_skills": ["skill1", "skill2"],
+      "match_reason": "why this job is a good fit"
+    }
+  ],
+  "learning_path": [
+    {
+      "week": "Week 1-2",
+      "title": "Step title",
+      "description": "What to learn and do in this period."
+    }
+  ]
+}
+"""
 
-def error_response(msg: str, raw: str = "") -> dict:
+
+# ---------------------------------------------------------------------------
+# Helper: gather relevant courses
+# ---------------------------------------------------------------------------
+def _find_matching_courses(target_skills: list[str], max_courses: int = 30) -> list[dict]:
+    """Return courses whose skill_tags overlap with *target_skills*."""
+    courses = get_all_courses()
+    target_lower = {s.lower().strip() for s in target_skills if s}
+
+    scored: list[tuple[int, dict]] = []
+    for c in courses:
+        tags = c.get("skill_tags", [])
+        if isinstance(tags, str):
+            tags = [t.strip().lower() for t in tags.split(",") if t.strip()]
+        overlap = len(target_lower.intersection({t.lower() for t in tags}))
+        if overlap > 0:
+            scored.append((overlap, c))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        {
+            "name": c.get("name", ""),
+            "source": c.get("source", ""),
+            "url": c.get("url", ""),
+            "duration": c.get("duration", ""),
+            "skill_tags": ", ".join(c.get("skill_tags", [])),
+        }
+        for _, c in scored[:max_courses]
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Helper: gather relevant jobs
+# ---------------------------------------------------------------------------
+def _find_matching_jobs(target_skills: list[str], max_jobs: int = 20) -> list[dict]:
+    """Return jobs whose required skills overlap with *target_skills*."""
+    jobs = get_all_jobs()
+    target_lower = {s.lower().strip() for s in target_skills if s}
+
+    scored: list[tuple[int, dict]] = []
+    for j in jobs:
+        job_skills = j.get("skills", [])
+        if isinstance(job_skills, str):
+            job_skills = [s.strip().lower() for s in job_skills.split(",") if s.strip()]
+        overlap = len(target_lower.intersection({s.lower() for s in job_skills}))
+        if overlap > 0:
+            scored.append((overlap, j))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        {
+            "title": j.get("jobtitle", j.get("title", "")),
+            "company": j.get("company", ""),
+            "location": j.get("city", j.get("joblocation_address", "")),
+            "skills": ", ".join(j.get("skills", [])[:10]),
+        }
+        for _, j in scored[:max_jobs]
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+def generate_reskilling_path(
+    job_title: str,
+    city: str,
+    experience: float,
+    skills: list[str],
+    gemini_analysis: dict | None = None,
+) -> dict:
+    """
+    Build a context-rich prompt from live datasets and call Gemini to produce
+    a personalised reskilling / upskilling plan.
+    """
+    api_key = os.getenv("GEMINI_API_KEY_RESKILLING")
+    if not api_key:
+        logger.error("GEMINI_API_KEY_RESKILLING is not set")
+        return _error_response("Gemini reskilling is not configured. Set GEMINI_API_KEY_RESKILLING.")
+
+    # ── 1. Hiring trends ────────────────────────────────────────────────
+    trends = compute_skill_trends()
+    rising = trends.get("rising_skills", [])[:10]
+    declining = trends.get("declining_skills", [])[:10]
+
+    # ── 2. Combine skill pool for course & job search ───────────────────
+    extra_skills: list[str] = []
+    if gemini_analysis:
+        extra_skills += gemini_analysis.get("new_skills", [])
+        extra_skills += gemini_analysis.get("pivot_roles", [])
+    extra_skills += [r.get("name", "") for r in rising]
+    all_target_skills = list(set(skills + extra_skills))
+
+    # ── 3. Pull matching courses & jobs ─────────────────────────────────
+    matched_courses = _find_matching_courses(all_target_skills)
+    matched_jobs = _find_matching_jobs(all_target_skills)
+
+    # ── 4. Build prompt ─────────────────────────────────────────────────
+    user_section = (
+        f"Current Job Title: {job_title}\n"
+        f"City: {city}\n"
+        f"Years of Experience: {experience}\n"
+        f"Known Skills: {', '.join(skills) if skills else 'None provided'}\n"
+    )
+
+    risk_section = ""
+    if gemini_analysis:
+        risk_section = (
+            f"\n--- AI Risk Assessment ---\n"
+            f"Risk Score: {gemini_analysis.get('risk_score', 'N/A')}/100\n"
+            f"Risk Level: {gemini_analysis.get('risk_level', 'unknown')}\n"
+            f"Pivot Roles Suggested: {', '.join(gemini_analysis.get('pivot_roles', []))}\n"
+            f"New Skills Suggested: {', '.join(gemini_analysis.get('new_skills', []))}\n"
+            f"Explanation: {gemini_analysis.get('explanation', '')}\n"
+        )
+
+    trends_section = (
+        f"\n--- Market Hiring Trends ---\n"
+        f"Rising Skills: {json.dumps(rising, default=str)}\n"
+        f"Declining Skills: {json.dumps(declining, default=str)}\n"
+    )
+
+    courses_section = (
+        f"\n--- Available Training Courses (matched to target skills) ---\n"
+        f"{json.dumps(matched_courses[:20], indent=2, default=str)}\n"
+    )
+
+    jobs_section = (
+        f"\n--- Relevant Job Openings (matched to target skills) ---\n"
+        f"{json.dumps(matched_jobs[:15], indent=2, default=str)}\n"
+    )
+
+    full_prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"--- Worker Profile ---\n{user_section}"
+        f"{risk_section}"
+        f"{trends_section}"
+        f"{courses_section}"
+        f"{jobs_section}"
+    )
+
+    # ── 5. Call Gemini ──────────────────────────────────────────────────
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=full_prompt,
+        )
+        raw_text = response.text or ""
+        logger.info("Gemini reskilling raw response (first 300 chars): %s", raw_text[:300])
+    except Exception as exc:
+        logger.error("Gemini reskilling request failed: %s", exc)
+        return _error_response(f"Gemini request failed: {exc}")
+
+    # ── 6. Parse response ───────────────────────────────────────────────
+    return _parse_response(raw_text)
+
+
+# ---------------------------------------------------------------------------
+# Response parsing
+# ---------------------------------------------------------------------------
+def _parse_response(raw_text: str) -> dict:
+    """Extract structured JSON from Gemini's response."""
+    default = _error_response("Could not parse Gemini response.")
+    default["raw_response"] = raw_text
+
+    try:
+        json_match = re.search(r"\{[\s\S]*\}", raw_text)
+        if json_match:
+            data = json.loads(json_match.group())
+            return {
+                "recommendation_type": data.get("recommendation_type", "reskilling"),
+                "summary": data.get("summary", ""),
+                "recommended_skills": data.get("recommended_skills", []),
+                "recommended_courses": data.get("recommended_courses", []),
+                "recommended_jobs": data.get("recommended_jobs", []),
+                "learning_path": data.get("learning_path", []),
+                "raw_response": raw_text,
+                "error": None,
+            }
+    except (json.JSONDecodeError, AttributeError) as exc:
+        logger.warning("Failed to parse Gemini reskilling JSON: %s", exc)
+
+    default["summary"] = raw_text
+    return default
+
+
+def _error_response(message: str) -> dict:
     return {
         "recommendation_type": None,
-        "summary": msg,
+        "summary": message,
         "recommended_skills": [],
         "recommended_courses": [],
         "recommended_jobs": [],
         "learning_path": [],
-        "raw_response": raw,
-        "error": msg
+        "raw_response": "",
+        "error": message,
     }
-
-def build_pool(skills: List[str], gemini_analysis: Dict[str, Any], rising_names: List[str]) -> Set[str]:
-    pool = set()
-    items = []
-    if skills:
-        items.extend(skills)
-    if gemini_analysis:
-        items.extend(gemini_analysis.get("new_skills") or [])
-        items.extend(gemini_analysis.get("pivot_roles") or [])
-    if rising_names:
-        items.extend(rising_names)
-        
-    for item in items:
-        if isinstance(item, str):
-            pool.add(item.lower())
-    return pool
-
-def get_trends() -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
-    db = get_db()
-    rising = []
-    declining = []
-    
-    for doc in db["res_skill_trends"].find({"year_key": "all"}).sort("rank", 1):
-        if doc.get("kind") == "rising" and len(rising) < 10:
-            rising.append({
-                "name": doc["name"],
-                "growth": f"+{doc['change']}",
-                "color": "from-blue-500 to-cyan-400"
-            })
-        elif doc.get("kind") == "declining" and len(declining) < 10:
-            declining.append({
-                "name": doc["name"],
-                "decline": str(doc["change"])
-            })
-    return rising, declining
-
-def find_matching_courses(pool: Set[str], limit: int = 30) -> List[Dict[str, str]]:
-    db = get_db()
-    overlaps = {}
-    for doc in db["res_reskill_index"].find({"kind": "course", "skill": {"$in": list(pool)}}):
-        for cid in doc.get("ids", []):
-            overlaps[cid] = overlaps.get(cid, 0) + 1
-            
-    valid = [(cid, count) for cid, count in overlaps.items() if count > 0]
-    valid.sort(key=lambda x: (-x[1], x[0]))
-    top_cids = [x[0] for x in valid[:limit]]
-    
-    if not top_cids:
-        return []
-        
-    course_docs = {d["course_id"]: d for d in db["res_reskill_courses"].find({"course_id": {"$in": top_cids}})}
-    dur_docs = {d["course_id"]: d.get("duration_weeks") for d in db["res_courses"].find({"course_id": {"$in": top_cids}})}
-    
-    result = []
-    for cid in top_cids:
-        doc = course_docs.get(cid)
-        if not doc:
-            continue
-        duration_weeks = dur_docs.get(cid)
-        duration_text = ""
-        if duration_weeks is not None:
-            if duration_weeks == 1:
-                duration_text = "1 week"
-            else:
-                duration_text = f"{duration_weeks} weeks"
-                
-        result.append({
-            "name": doc.get("name", ""),
-            "source": doc.get("source", ""),
-            "url": doc.get("url", ""),
-            "duration": duration_text,
-            "skill_tags": ", ".join(doc.get("tags_lower", []))
-        })
-    return result
-
-def find_matching_jobs(pool: Set[str], limit: int = 20) -> List[Dict[str, str]]:
-    db = get_db()
-    overlaps = {}
-    for doc in db["res_reskill_index"].find({"kind": "job", "skill": {"$in": list(pool)}}):
-        for rid in doc.get("ids", []):
-            overlaps[rid] = overlaps.get(rid, 0) + 1
-            
-    valid = [(rid, count) for rid, count in overlaps.items() if count > 0]
-    valid.sort(key=lambda x: (-x[1], x[0]))
-    top_rids = [x[0] for x in valid[:limit]]
-    
-    if not top_rids:
-        return []
-        
-    job_docs = {d["row_id"]: d for d in db["res_reskill_jobs"].find({"row_id": {"$in": top_rids}})}
-    
-    result = []
-    for rid in top_rids:
-        doc = job_docs.get(rid)
-        if not doc:
-            continue
-        result.append({
-            "title": doc.get("title", ""),
-            "company": doc.get("company", ""),
-            "location": doc.get("city", ""),
-            "skills": ", ".join(doc.get("skills_first10", []))
-        })
-    return result
-
-def build_prompt(job_title: str, city: str, experience: float, skills: List[str], gemini_analysis: dict, rising: list, declining: list, courses: list, jobs: list) -> str:
-    prompt_parts = [SYSTEM_PROMPT]
-    
-    safe_skills = [str(x) for x in skills if x is not None] if isinstance(skills, list) else []
-    
-    prompt_parts.append("--- Worker Profile ---")
-    prompt_parts.append(f"Job Title: {job_title}")
-    prompt_parts.append(f"City: {city}")
-    prompt_parts.append(f"Years of Experience: {experience}")
-    prompt_parts.append(f"Skills: {', '.join(safe_skills)}")
-    
-    if gemini_analysis:
-        pivot = gemini_analysis.get('pivot_roles')
-        new = gemini_analysis.get('new_skills')
-        safe_pivot = [str(x) for x in pivot if x is not None] if isinstance(pivot, list) else []
-        safe_new = [str(x) for x in new if x is not None] if isinstance(new, list) else []
-        
-        prompt_parts.append("--- AI Risk Assessment ---")
-        prompt_parts.append(f"Risk Score: {gemini_analysis.get('risk_score', 'N/A')}/100")
-        prompt_parts.append(f"Risk Level: {gemini_analysis.get('risk_level', 'unknown')}")
-        prompt_parts.append(f"Pivot Roles: {', '.join(safe_pivot)}")
-        prompt_parts.append(f"New Skills: {', '.join(safe_new)}")
-        prompt_parts.append(f"Explanation: {gemini_analysis.get('explanation', '')}")
-        
-    prompt_parts.append("--- Market Hiring Trends ---")
-    prompt_parts.append(json.dumps({"rising_skills": rising, "declining_skills": declining}, indent=2, ensure_ascii=False))
-    
-    prompt_parts.append("--- Available Training Courses (matched to target skills) ---")
-    prompt_parts.append(json.dumps(courses[:20], indent=2, ensure_ascii=False))
-    
-    prompt_parts.append("--- Relevant Job Openings (matched to target skills) ---")
-    prompt_parts.append(json.dumps(jobs[:15], indent=2, ensure_ascii=False))
-    
-    return "\n".join(prompt_parts)
-
-def generate_reskilling_path(job_title: str, city: str, experience: float, skills: List[str], gemini_analysis: dict = None) -> dict:
-    try:
-        rising, declining = get_trends()
-        rising_names = [r["name"] for r in rising]
-        
-        pool = build_pool(skills, gemini_analysis, rising_names)
-        
-        courses = find_matching_courses(pool, 30)
-        jobs = find_matching_jobs(pool, 20)
-        
-        prompt = build_prompt(job_title, city, experience, skills, gemini_analysis, rising, declining, courses, jobs)
-        
-        try:
-            raw_text = generate_text(prompt, "GEMINI_API_KEY_RESKILLING")
-            
-            match = re.search(r'\{[\s\S]*\}', raw_text)
-            if match:
-                try:
-                    data = json.loads(match.group(0))
-                    return {
-                        "recommendation_type": data.get("recommendation_type", "reskilling"),
-                        "summary": data.get("summary", ""),
-                        "recommended_skills": data.get("recommended_skills", []),
-                        "recommended_courses": data.get("recommended_courses", []),
-                        "recommended_jobs": data.get("recommended_jobs", []),
-                        "learning_path": data.get("learning_path", []),
-                        "raw_response": raw_text,
-                        "error": None
-                    }
-                except json.JSONDecodeError:
-                    pass
-            
-            return error_response("Could not parse Gemini response.", raw_text)
-            
-        except GeminiNotConfigured:
-            return error_response("Gemini reskilling is not configured. Set GEMINI_API_KEY_RESKILLING.")
-        except Exception as exc:
-            return error_response("Gemini request failed: " + mask_secrets(str(exc)))
-            
-    except Exception as exc:
-        return error_response("Internal error: " + mask_secrets(str(exc)))
