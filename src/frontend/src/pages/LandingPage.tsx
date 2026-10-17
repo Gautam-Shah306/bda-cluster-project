@@ -1,85 +1,74 @@
-
 import { Link } from 'react-router-dom';
-import { useAuth } from '../context';
-import { Activity, ShieldAlert, Map } from 'lucide-react';
+import { ArrowRight, Activity, ShieldAlert, BookOpen } from 'lucide-react';
 
-export default function LandingPage() {
-  const { isAuthenticated } = useAuth();
+const LandingPage = () => {
+    return (
+        <div className="min-h-screen bg-background relative overflow-hidden">
+            {/* Animated Subtle Gradient Background */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
+                <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-accent/20 rounded-full blur-[120px]" />
+                <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px]" />
+            </div>
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <header className="h-16 flex items-center justify-between px-8 bg-secondary border-b border-gray-800">
-        <h1 className="text-xl font-bold text-accent">Skills Mirage</h1>
-        <nav className="flex items-center gap-4">
-          {isAuthenticated ? (
-            <Link to="/dashboard" className="btn-primary">
-              Go to Dashboard
-            </Link>
-          ) : (
-            <>
-              <Link to="/login" className="btn-secondary">
-                Login
-              </Link>
-              <Link to="/register" className="btn-primary">
-                Sign Up
-              </Link>
-            </>
-          )}
-        </nav>
-      </header>
+            {/* Navigation */}
+            <nav className="relative z-10 flex items-center justify-between p-6 max-w-7xl mx-auto">
+                <div className="flex items-center gap-2">
+                    <Activity className="h-8 w-8 text-accent" />
+                    <span className="text-xl font-bold tracking-tight text-white">Skills Mirage</span>
+                </div>
+                <div className="flex gap-4">
+                    <Link to="/dashboard" className="btn-primary">Go to Dashboard</Link>
+                </div>
+            </nav>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-16">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="text-5xl font-extrabold mb-6 tracking-tight">
-            Future-Proof Your Workforce
-          </h2>
-          <p className="text-xl text-textSecondary mb-8">
-            Navigate the shifting landscape of tech hiring. Discover real-time market trends, assess AI vulnerability, and empower your team with tailored reskilling pathways.
-          </p>
-          <div className="flex gap-4 justify-center">
-            <Link to="/register" className="btn-primary px-8 py-3 text-lg">
-              Get Started
-            </Link>
-            <Link to="/login" className="btn-secondary px-8 py-3 text-lg">
-              Explore Demo
-            </Link>
-          </div>
+            {/* Hero Section */}
+            <main className="relative z-10 flex flex-col items-center justify-center text-center px-4 pt-32 pb-20 max-w-5xl mx-auto">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-sm font-medium mb-8 border border-accent/20">
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                    </span>
+                    India's first open workforce intelligence system
+                </div>
+
+                <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-6 leading-tight">
+                    Navigate the future of <br /> <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-purple-400">Workforce Intelligence</span>
+                </h1>
+
+                <p className="text-xl text-textSecondary max-w-2xl mb-10 leading-relaxed">
+                    Analyze job market signals, measure AI risk for specific roles, and discover personalized reskilling paths in real-time.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                    <Link to="/dashboard" className="btn-primary flex justify-center items-center gap-2 text-lg px-8 py-3">
+                        Get Started <ArrowRight className="w-5 h-5" />
+                    </Link>
+                    <a href="#features" className="btn-secondary flex justify-center items-center text-lg px-8 py-3">
+                        Learn More
+                    </a>
+                </div>
+            </main>
+
+            {/* Features Section */}
+            <section id="features" className="relative z-10 max-w-7xl mx-auto px-6 py-20 grid md:grid-cols-3 gap-8">
+                <div className="card">
+                    <Activity className="w-10 h-10 text-accent mb-4" />
+                    <h3 className="text-xl font-bold text-white mb-2">Market Signals</h3>
+                    <p className="text-textSecondary">Real-time analysis of hiring trends and shifting skill demands across cities and sectors.</p>
+                </div>
+                <div className="card">
+                    <ShieldAlert className="w-10 h-10 text-red-400 mb-4" />
+                    <h3 className="text-xl font-bold text-white mb-2">AI Vulnerability Index</h3>
+                    <p className="text-textSecondary">Measure the automation risk for any job role based on changing market dynamics.</p>
+                </div>
+                <div className="card">
+                    <BookOpen className="w-10 h-10 text-green-400 mb-4" />
+                    <h3 className="text-xl font-bold text-white mb-2">Reskilling Paths</h3>
+                    <p className="text-textSecondary">Personalized timeline UI guiding workers from vulnerable roles to high-demand careers.</p>
+                </div>
+            </section>
         </div>
+    );
+};
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl w-full">
-          <div className="card-glow">
-            <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mb-4">
-              <Activity className="w-6 h-6 text-accent" />
-            </div>
-            <h3 className="text-xl font-bold mb-2">Market Signals</h3>
-            <p className="text-textSecondary">
-              Track surging skills and declining roles in real-time. Make data-driven hiring decisions with confidence.
-            </p>
-          </div>
-          
-          <div className="card-glow">
-            <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
-              <ShieldAlert className="w-6 h-6 text-red-400" />
-            </div>
-            <h3 className="text-xl font-bold mb-2">AI Vulnerability Index</h3>
-            <p className="text-textSecondary">
-              Identify which roles are most exposed to automation and prioritize workforce transformation effectively.
-            </p>
-          </div>
-          
-          <div className="card-glow">
-            <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center mb-4">
-              <Map className="w-6 h-6 text-green-400" />
-            </div>
-            <h3 className="text-xl font-bold mb-2">Reskilling Paths</h3>
-            <p className="text-textSecondary">
-              Generate personalized learning journeys to transition at-risk workers into high-demand engineering roles.
-            </p>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-
+export default LandingPage;

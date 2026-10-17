@@ -17,9 +17,15 @@ import {
   liveTopCities,
   liveTopRoles,
   liveCityRoleDistribution,
-  liveRoleCityDistribution
+  liveRoleCityDistribution,
+  contractNewUserProfile,
+  contractAnalyzeResponse,
+  contractEmptyReskilling,
+  contractReskillingPlan,
+  contractChatbotCanned
 } from './liveFixtures';
 
+// Keys are "/path" (any method) or "METHOD /path" (that method only).
 const defaultMocks: Record<string, unknown> = {
   '/dashboard/stats': liveStats,
   '/dashboard/hiring-trends': liveHiringTrends,
@@ -31,10 +37,15 @@ const defaultMocks: Record<string, unknown> = {
   '/dashboard/top-cities': liveTopCities,
   '/dashboard/top-roles': liveTopRoles,
   '/dashboard/city-role-distribution': liveCityRoleDistribution,
-  '/dashboard/role-city-distribution': liveRoleCityDistribution
+  '/dashboard/role-city-distribution': liveRoleCityDistribution,
+  'GET /worker/profile': contractNewUserProfile,
+  'POST /worker/profile': contractAnalyzeResponse,
+  'GET /worker/reskilling': contractEmptyReskilling,
+  'POST /worker/reskilling': contractReskillingPlan,
+  'POST /chatbot/query': contractChatbotCanned
 };
 
-export const recordedCalls: { method: string; url: string }[] = [];
+export const recordedCalls: { method: string; url: string; body?: unknown }[] = [];
 let overrides: Record<string, MockConfig> = {};
 
 export function setupMockApi() {
@@ -44,7 +55,15 @@ export function setupMockApi() {
   globalThis.fetch = vi.fn().mockImplementation(async (url: string | URL | Request, init?: RequestInit) => {
     const urlStr = url.toString();
     const method = init?.method || 'GET';
-    recordedCalls.push({ method, url: urlStr });
+    let parsedBody: unknown = undefined;
+    if (typeof init?.body === 'string') {
+      try {
+        parsedBody = JSON.parse(init.body);
+      } catch {
+        parsedBody = init.body;
+      }
+    }
+    recordedCalls.push({ method, url: urlStr, body: parsedBody });
     
     const urlObj = new URL(urlStr);
     let path = urlObj.pathname;
@@ -56,11 +75,17 @@ export function setupMockApi() {
         path = path.slice(21);
     }
     
-    // We check overrides using url.pathname and url.search combined, or just pathname
+    // Overrides: "METHOD /path?query", "/path?query", "METHOD /path", "/path"
     const search = urlObj.search;
     const fullPath = path + search;
+    const defaultBody = defaultMocks[`${method} ${path}`] !== undefined ? defaultMocks[`${method} ${path}`] : defaultMocks[path];
     
-    const config = overrides[fullPath] || overrides[path] || { status: 200, body: defaultMocks[path] };
+    const config =
+      overrides[`${method} ${fullPath}`] ||
+      overrides[fullPath] ||
+      overrides[`${method} ${path}`] ||
+      overrides[path] ||
+      { status: 200, body: defaultBody };
     
     if (config.delay) {
       await new Promise(r => setTimeout(r, config.delay));
@@ -71,7 +96,7 @@ export function setupMockApi() {
       status: config.status || 200,
       json: async () => {
         if (config.body !== undefined) return config.body;
-        if (defaultMocks[path] !== undefined) return defaultMocks[path];
+        if (defaultBody !== undefined) return defaultBody;
         return { detail: 'Not Found' };
       }
     };
@@ -85,5 +110,3 @@ export function overrideMock(pathAndQuery: string, config: MockConfig) {
 export function restoreMockApi() {
   vi.restoreAllMocks();
 }
-
-

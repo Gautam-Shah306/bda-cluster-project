@@ -1,132 +1,115 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signupApi, ApiError } from '../../services/api';
+import { Activity, ArrowRight, Lock, Mail, UserSquare } from 'lucide-react';
+import { signupApi } from '../../services/api';
 
-export default function Register() {
-  const navigate = useNavigate();
-  
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+const Register = () => {
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    if (success) {
-      timer = setTimeout(() => {
-        navigate('/login');
-      }, 1500);
-    }
-    return () => {
-      if (timer) clearTimeout(timer);
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        setLoading(true);
+
+        try {
+            await signupApi({
+                email,
+                name,
+                password
+            });
+            setSuccess('Account created successfully');
+            setTimeout(() => navigate('/login'), 1500);
+        } catch (err: any) {
+            setError(err.message || 'Failed to register');
+            setLoading(false);
+        }
     };
-  }, [success, navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
+    return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+            <div className="absolute top-[20%] left-[10%] w-[30%] h-[30%] bg-purple-500/20 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute bottom-[20%] right-[10%] w-[30%] h-[30%] bg-accent/10 rounded-full blur-[100px] pointer-events-none" />
 
-    try {
-      await signupApi({ name, email, password });
-      setSuccess(true);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+            <div className="w-full max-w-md relative z-10">
+                <div className="text-center mb-10">
+                    <Link to="/" className="inline-flex items-center gap-2 mb-6">
+                        <Activity className="h-6 w-6 text-accent" />
+                        <span className="text-lg font-bold tracking-tight text-white">Skills Mirage</span>
+                    </Link>
+                    <h2 className="text-3xl font-bold text-white mb-2">Create Account</h2>
+                    <p className="text-textSecondary">Join the intelligence platform</p>
+                </div>
 
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="card w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-accent mb-2">Create an Account</h1>
-          <p className="text-textSecondary">Sign up to get started</p>
+                <form onSubmit={handleSubmit} className="card">
+                    <div className="card-glow" />
+                    {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm">{error}</div>}
+                    {success && <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-3 rounded-lg mb-6 text-sm">{success}</div>}
+
+                    <div className="space-y-4 relative z-10 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Full Name</label>
+                            <div className="relative">
+                                <UserSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textSecondary" />
+                                <input
+                                    type="text"
+                                    required
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    className="input-field pl-10 w-full bg-secondary/50 border border-white/10 rounded-lg p-2.5 text-white"
+                                    placeholder="John Doe"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Email</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textSecondary" />
+                                <input
+                                    type="email"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="input-field pl-10 w-full bg-secondary/50 border border-white/10 rounded-lg p-2.5 text-white"
+                                    placeholder="john@example.com"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textSecondary" />
+                                <input
+                                    type="password"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="input-field pl-10 w-full bg-secondary/50 border border-white/10 rounded-lg p-2.5 text-white"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+                        </div>
+
+                        <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-4">
+                            {loading ? 'Creating...' : 'Register'} <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <p className="text-center text-sm text-textSecondary mt-6 relative z-10">
+                        Already have an account? <Link to="/login" className="text-accent hover:underline">Sign in</Link>
+                    </p>
+                </form>
+            </div>
         </div>
+    );
+};
 
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-md mb-6 text-sm">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-3 rounded-md mb-6 text-sm">
-            Account created successfully
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium mb-2 text-textPrimary">
-              Full Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="input-field"
-              placeholder="John Doe"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-2 text-textPrimary">
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-2 text-textPrimary">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
-              placeholder="Enter your password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading || success}
-            className="btn-primary w-full"
-          >
-            {isLoading ? 'Creating account...' : 'Sign Up'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-textSecondary">
-          Already have an account?{' '}
-          <Link to="/login" className="text-accent hover:underline">
-            Sign in
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
+export default Register;

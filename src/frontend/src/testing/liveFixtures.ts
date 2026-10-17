@@ -97,3 +97,100 @@ export const liveRoleCityDistribution = [
   { role_key: 'software engineer', name: 'Delhi', value: 9, rank: 2 },
   { role_key: 'software engineer', name: 'Mumbai', value: 8, rank: 3 }
 ];
+
+// ---------------------------------------------------------------------------
+// F3 fixtures (worker, reskilling, chatbot). ALL OF THESE ARE contract-derived:
+// they were built from the documented response shapes (docs/DECISIONS.md D-021,
+// D-023, D-024, D-025 and the Python source), not captured from a running API.
+// Re-capture them from a live API with a throwaway user when convenient.
+// ---------------------------------------------------------------------------
+
+/** contract-derived: GET /worker/profile for a brand-new user (signup defaults). */
+export const contractNewUserProfile = {
+  job_role: null,
+  city: null,
+  years_of_experience: null,
+  role_description: null,
+  skills: [],
+  gemini_risk_score: null,
+  reasoning: null,
+  reskilling_path: null,
+  gemini_analysis: null
+};
+
+/** contract-derived: GET /worker/profile after a profile was analyzed. */
+export const contractSavedProfile = {
+  job_role: 'BPO Voice Executive',
+  city: 'Pune',
+  years_of_experience: 3,
+  role_description: 'Handle inbound customer calls and update the CRM.',
+  skills: ['communication', 'crm'],
+  gemini_risk_score: 78,
+  reasoning: 'Base risk is high for scripted voice work.',
+  reskilling_path: null,
+  gemini_analysis: {
+    risk_score: 78,
+    risk_level: 'high',
+    pivot_roles: ['AI Content Moderation Analyst', 'Data Analyst'],
+    new_skills: ['Excel', 'SQL'],
+    explanation: 'Base risk is high for scripted voice work.',
+    raw_response: '{}'
+  }
+};
+
+/** contract-derived: POST /worker/profile response. */
+export const contractAnalyzeResponse = {
+  parsed_profile: { role: 'BPO Voice Executive', city: 'Pune', experience: 3, skills: ['crm'] },
+  gemini_analysis: contractSavedProfile.gemini_analysis
+};
+
+/** contract-derived: GET /worker/reskilling before any plan exists (reference empty shape). */
+export const contractEmptyReskilling = {
+  recommendation_type: null,
+  summary: "No reskilling analysis generated yet. Click 'Generate' to create one.",
+  recommended_skills: [],
+  recommended_courses: [],
+  recommended_jobs: [],
+  learning_path: [],
+  error: null
+};
+
+/** contract-derived: a full reskilling plan following the prompt's JSON schema. */
+export const contractReskillingPlan = {
+  recommendation_type: 'reskilling',
+  summary: 'Move from scripted voice support towards data work.',
+  recommended_skills: [
+    { skill: 'Excel', reason: 'Used in almost every analytics role.' },
+    { skill: 'SQL', reason: 'Core skill for data analyst openings.' }
+  ],
+  recommended_courses: [
+    {
+      name: 'Data Analysis with Python',
+      source: 'NPTEL',
+      url: 'https://onlinecourses.nptel.ac.in/noc25_cs00/preview',
+      duration: '12 weeks',
+      matched_skills: ['python', 'data analysis']
+    }
+  ],
+  recommended_jobs: [
+    {
+      title: 'Junior Data Analyst',
+      company: 'Acme Analytics',
+      location: 'Pune',
+      required_skills: ['excel', 'sql'],
+      match_reason: 'Matches the Excel and SQL skills you are building.'
+    }
+  ],
+  learning_path: [
+    { week: 'Week 1-2', title: 'Spreadsheet basics', description: 'Learn formulas and pivot tables.' },
+    { week: 'Week 3-6', title: 'SQL fundamentals', description: 'Practice joins and aggregation.' },
+    { week: 'Week 7-12', title: 'Portfolio project', description: 'Analyse a public dataset.' }
+  ],
+  raw_response: '{}',
+  error: null
+};
+
+/** contract-derived: POST /chatbot/query for a user without an analysis (canned reply in query_router.py). */
+export const contractChatbotCanned = {
+  response: "Please fill in the Worker Analysis page and click 'Analyze Risk & Opportunities' first."
+};

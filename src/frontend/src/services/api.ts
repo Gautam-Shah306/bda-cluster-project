@@ -142,4 +142,61 @@ export const getTopRoles = () => apiFetch<RoleCount[]>('/dashboard/top-roles');
 export const getRoleDistribution = (city: string) => apiFetch<NameValue[]>(`/dashboard/city-role-distribution?city=${encodeURIComponent(city)}`);
 export const getCitySpread = (role: string) => apiFetch<NameValue[]>(`/dashboard/role-city-distribution?role=${encodeURIComponent(role)}`);
 
+// ---- Worker, reskilling and chatbot (F3, D-033). Every response is normalized. ----
+import {
+  chatbotText,
+  normalizeGeminiAnalysis,
+  normalizeReskilling,
+  normalizeWorkerProfile,
+} from '../utils/workerData';
+import type {
+  GeminiAnalysis,
+  ReskillingPlan,
+  WorkerPayload,
+  WorkerProfile,
+} from './workerTypes';
 
+/** GET /worker/profile, normalized. */
+export const getWorkerProfile = async (): Promise<WorkerProfile> =>
+  normalizeWorkerProfile(await apiFetch<unknown>('/worker/profile'));
+
+/** POST /worker/profile; returns the normalized Gemini analysis. */
+export const analyzeWorker = async (payload: WorkerPayload): Promise<GeminiAnalysis> => {
+  const res = await apiFetch<unknown>('/worker/profile', { method: 'POST', body: payload });
+  const analysis =
+    typeof res === 'object' && res !== null ? (res as Record<string, unknown>).gemini_analysis : null;
+  return normalizeGeminiAnalysis(analysis);
+};
+
+/** GET /worker/reskilling, normalized. */
+export const getReskilling = async (): Promise<ReskillingPlan> =>
+  normalizeReskilling(await apiFetch<unknown>('/worker/reskilling'));
+
+/** POST /worker/reskilling (no body; can take up to two minutes), normalized. */
+export const generateReskilling = async (): Promise<ReskillingPlan> =>
+  normalizeReskilling(await apiFetch<unknown>('/worker/reskilling', { method: 'POST' }));
+
+/** POST /chatbot/query. The profile is always {} (stateless, D-033). */
+export const queryChatbot = async (question: string): Promise<string> =>
+  chatbotText(
+    await apiFetch<unknown>('/chatbot/query', {
+      method: 'POST',
+      body: { worker_profile: {}, question },
+    }),
+  );
+
+// ----- Compatibility aliases for legacy imports (jobAnalytics) -----
+export const getDashboardStatsApi = getDashboardStats;
+export const getHiringTrendsApi = getHiringTrends;
+export const getSkillTrendsApi = getSkillTrends;
+export const getSkillTrendYearsApi = getSkillTrendYears;
+export const getSkillGapApi = getSkillGap;
+export const getVulnerabilityApi = getVulnerability;
+export const getVulnerabilityRegionsApi = getVulnerability; // same endpoint
+export const getLatestJobsApi = getLatestJobs;
+export const getTopCitiesApi = getTopCities;
+export const getIndustryDistributionApi = async () => [] as any[]; // placeholder until implemented
+export const getTopRolesApi = getTopRoles;
+export const getRoleDistributionApi = getRoleDistribution;
+export const getCitySpreadApi = getCitySpread;
+export const getScrapedJobsApi = async (_force?: boolean) => { /* no-op, placeholder */ return true; };

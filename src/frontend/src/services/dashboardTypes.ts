@@ -10,20 +10,17 @@ export interface HiringTrendPoint {
   job_count: number;
 }
 
-export interface RisingSkill {
+export interface SkillItem {
   name: string;
-  growth: string;
-  color: string;
-}
-
-export interface DecliningSkill {
-  name: string;
-  decline: string;
+  growth?: string;
+  decline?: string;
+  color?: string;
+  type?: 'rising' | 'declining';
 }
 
 export interface SkillTrends {
-  rising_skills: RisingSkill[];
-  declining_skills: DecliningSkill[];
+  rising_skills: SkillItem[];
+  declining_skills: SkillItem[];
 }
 
 export interface SkillGapRow {
@@ -33,15 +30,18 @@ export interface SkillGapRow {
   gap: number;
 }
 
-export interface VulnerabilityRow {
+export interface VulnerabilityTableRow {
   job_role: string;
   city: string;
   ai_risk_score: number;
+  seq?: number;
 }
 
 export interface VulnerabilityResponse {
-  table: VulnerabilityRow[];
+  table: VulnerabilityTableRow[];
   regions: Record<string, number>;
+  role_risks?: Record<string, number>;
+  region_risks?: Record<string, number>;
 }
 
 export interface LatestJob {
@@ -67,5 +67,3 @@ export interface NameValue {
   name: string;
   value: number;
 }
-
-

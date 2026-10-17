@@ -1,67 +1,115 @@
-import { useAsyncData } from '../../hooks/useAsyncData';
-import { getHiringTrends, getTopCities } from '../../services/api';
-import { hiringSeries, formatCityName } from '../../utils/dashboardData';
-import ChartCard from '../../components/ChartCard';
-import DataState from '../../components/DataState';
-import AxisTick from '../../components/AxisTick';
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { useState, useEffect } from 'react';
+import {
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+    BarChart, Bar
+} from 'recharts';
+import { getHiringTrends, getTopCities } from '../../services/jobAnalytics';
 
-export default function HiringTrends() {
-  const { data: hiring, loading: hiringLoading, error: hiringError } = useAsyncData(getHiringTrends, []);
-  const { data: cities, loading: citiesLoading, error: citiesError } = useAsyncData(getTopCities, []);
+const formatCityName = (city: string) => {
+    if (!city) return '';
+    // Handle cases like "ncr/bangalore" by taking just the primary token
+    let mainCity = city.split('/')[0].split(',')[0].trim();
+    if (mainCity.toLowerCase() === 'delhi ncr' || mainCity.toLowerCase() === 'ncr') return 'Delhi NCR';
+    return mainCity.charAt(0).toUpperCase() + mainCity.slice(1).toLowerCase();
+};
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Hiring Trends</h1>
+const HiringTrends = () => {
 
-      <ChartCard 
-        title="Aggregate Job Postings"
-        subtitle="Postings (left axis) and Estimated Active Roles (right axis, 0.8 x postings)"
-      >
-        <DataState loading={hiringLoading} error={hiringError}>
-          {hiring && (
-            <div className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={hiringSeries(hiring)} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="name" stroke="#9CA3AF" />
-                  <YAxis yAxisId="left" stroke="#9CA3AF" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#9CA3AF" />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '4px', color: '#F9FAFB' }}
-                  />
-                  <Legend />
-                  <Line yAxisId="left" type="monotone" dataKey="jobs" name="Postings" stroke="#3B82F6" activeDot={{ r: 8 }} />
-                  <Line yAxisId="right" type="monotone" dataKey="active" name="Estimated Active Roles" stroke="#10B981" />
-                </LineChart>
-              </ResponsiveContainer>
+    const [trendData, setTrendData] = useState<any[]>([]);
+    const [cityData, setCityData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadData = async () => {
+            try {
+                // In a real app we would pass `timeRange` and `city` to filtering
+                const trends = await getHiringTrends();
+                const cities = await getTopCities();
+
+                if (mounted) {
+                    // Adapt the trends to include 'active' if needed, or just map 'value' to 'jobs'
+                    const mappedTrends = trends.map((t: any) => ({ name: t.name, jobs: t.value, active: Math.round(t.value * 0.8) }));
+
+                    // Format city display names right before setting state
+                    const displayCities = cities.map((c: any) => ({ name: formatCityName(c.name), demand: c.demand }));
+
+                    setTrendData(mappedTrends);
+                    setCityData(displayCities);
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error("Error loading hiring trends:", err);
+                if (mounted) setLoading(false);
+            }
+        };
+        loadData();
+        return () => { mounted = false; };
+    }, []);
+
+    if (loading) {
+        return <div className="p-8 text-center text-white">Loading hiring trends...</div>;
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-white mb-1">Hiring Trends</h1>
+                    <p className="text-textSecondary text-sm">Analyze job posting frequency across regions and sectors.</p>
+                </div>
+
+                <div>
+                </div>
             </div>
-          )}
-        </DataState>
-      </ChartCard>
 
-      <ChartCard title="City Demand Comparison">
-        <DataState loading={citiesLoading} error={citiesError}>
-          {cities && (
-            <div className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={cities} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="name" stroke="#9CA3AF" tickFormatter={formatCityName} tick={<AxisTick />} interval={0} />
-                  <YAxis stroke="#9CA3AF" />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '4px', color: '#F9FAFB' }}
-                    itemStyle={{ color: '#F59E0B' }}
-                  />
-                  <Bar dataKey="demand" fill="#F59E0B" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="card mb-6">
+                <h3 className="text-lg font-bold text-white mb-6">Aggregate Job Postings</h3>
+                <div className="h-[350px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trendData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                            <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis yAxisId="left" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                            <RechartsTooltip
+                                contentStyle={{ backgroundColor: '#111827', borderColor: '#ffffff10', borderRadius: '8px' }}
+                                itemStyle={{ color: '#e5e7eb' }}
+                                labelFormatter={(label) => `Period: ${label}`}
+                                formatter={(value, name) => {
+                                    if (name === 'jobs') return [value, 'Job Postings'];
+                                    if (name === 'active') return [value, 'Estimated Active Roles'];
+                                    return [value, String(name)];
+                                }}
+                            />
+                            <Line yAxisId="left" type="monotone" dataKey="jobs" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                            <Line yAxisId="right" type="monotone" dataKey="active" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
-          )}
-        </DataState>
-      </ChartCard>
-    </div>
-  );
-}
 
+            <div className="card mb-6">
+                <h3 className="text-lg font-bold text-white mb-6">City Demand Comparison</h3>
+                <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={cityData} layout="vertical" margin={{ left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" horizontal={false} />
+                            <XAxis type="number" stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
+                            <YAxis dataKey="name" type="category" stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} width={85} />
+                            <RechartsTooltip
+                                cursor={{ fill: '#ffffff05' }}
+                                contentStyle={{ backgroundColor: '#111827', borderColor: '#ffffff10', borderRadius: '8px' }}
+                                labelFormatter={(label) => `City: ${label}`}
+                                formatter={(value) => [value, 'Job Demand']}
+                            />
+                            <Bar dataKey="demand" fill="#10b981" radius={[0, 4, 4, 0]} barSize={24} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </div>
+    );
+};
 
+export default HiringTrends;

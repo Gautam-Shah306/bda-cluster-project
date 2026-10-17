@@ -1,101 +1,97 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { loginApi, ApiError } from '../../services/api';
-import { useAuth } from '../../context';
+import { useAuth } from '../../context/AuthContext';
+import { Activity, ArrowRight, Lock, Mail } from 'lucide-react';
+import { loginApi } from '../../services/api';
 
-export default function Login() {
-  const navigate = useNavigate();
-  const { login } = useAuth();
-  
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+const Login = () => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
+    const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
 
-    try {
-      const res = await loginApi({ email, password });
-      const name = email.split('@')[0];
-      login(res.access_token, { name, email });
-      navigate('/dashboard');
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        try {
+            const data = await loginApi({ email, password });
 
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="card w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-accent mb-2">Welcome Back</h1>
-          <p className="text-textSecondary">Sign in to your account</p>
+            // Generate standard JWT localStorage scopes matching auth hooks natively
+            login(data.access_token, { name: email.split('@')[0], email });
+            navigate('/dashboard');
+        } catch (err: any) {
+            setError(err.message || 'Failed to login');
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+            <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] bg-accent/20 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute bottom-[20%] left-[10%] w-[30%] h-[30%] bg-purple-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+            <div className="w-full max-w-md relative z-10">
+                <div className="text-center mb-10">
+                    <Link to="/" className="inline-flex items-center gap-2 mb-6">
+                        <Activity className="h-6 w-6 text-accent" />
+                        <span className="text-lg font-bold tracking-tight text-white">Skills Mirage</span>
+                    </Link>
+                    <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
+                    <p className="text-textSecondary">Sign in to access your intelligence dashboard</p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="card">
+                    <div className="card-glow" />
+                    {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm">{error}</div>}
+
+                    <div className="space-y-4 relative z-10">
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Email</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textSecondary" />
+                                <input
+                                    type="email"
+                                    autoFocus
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="input-field pl-10 w-full bg-secondary/50 border border-white/10 rounded-lg p-2.5 text-white"
+                                    placeholder="admin@skillsmirage.com"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-1">Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textSecondary" />
+                                <input
+                                    type="password"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="input-field pl-10 w-full bg-secondary/50 border border-white/10 rounded-lg p-2.5 text-white"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+                        </div>
+
+                        <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-4">
+                            {loading ? 'Authenticating...' : 'Sign In'} <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <p className="text-center text-sm text-textSecondary mt-6 relative z-10">
+                        Don't have an account? <Link to="/register" className="text-accent hover:underline">Register here</Link>
+                    </p>
+                </form>
+            </div>
         </div>
+    );
+};
 
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-md mb-6 text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-2 text-textPrimary">
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-2 text-textPrimary">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
-              placeholder="Enter your password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="btn-primary w-full"
-          >
-            {isLoading ? 'Authenticating...' : 'Sign in'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-textSecondary">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-accent hover:underline">
-            Sign up
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
+export default Login;

@@ -1,83 +1,179 @@
-import { useAsyncData } from '../../hooks/useAsyncData';
-import { getSkillTrends, getSkillGap } from '../../services/api';
-import { formatName, gapSeries } from '../../utils/dashboardData';
-import ChartCard from '../../components/ChartCard';
-import DataState from '../../components/DataState';
-import AxisTick from '../../components/AxisTick';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { useState, useEffect } from 'react';
+import { ArrowUpRight, ArrowDownRight, Zap } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { getSkillGapApiWrapper, getSkillTrends } from '../../services/jobAnalytics';
 
-export default function SkillsIntelligence() {
-  const { data: trends, loading: trendsLoading, error: trendsError } = useAsyncData(() => getSkillTrends(), []);
-  const { data: gap, loading: gapLoading, error: gapError } = useAsyncData(() => getSkillGap(), []);
+// Helper function to format strings to Title Case for display
+const formatSkillName = (name: string) => {
+    if (!name) return name;
+    return name.split(/[\s-]/)
+        .map(word => {
+            const upper = word.toUpperCase();
+            if (upper === 'IT' || upper === 'AI' || upper === 'ML' || upper === 'ERP' || upper === 'QA' || upper === 'AWS') return upper;
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        })
+        .join(' ');
+};
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Skills Intelligence</h1>
+const truncateLabel = (label: string) => {
+    if (!label) return "";
+    return label.length > 12 ? label.substring(0, 12) + "..." : label;
+};
 
-      <DataState loading={trendsLoading} error={trendsError}>
-        {trends && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+// Removed CustomTick as YAxis is now used for categories with width
+
+const SkillsIntelligence = () => {
+    const [gapData, setGapData] = useState<any[]>([]);
+    const [risingData, setRisingData] = useState<any[]>([]);
+    const [decliningData, setDecliningData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadData = async () => {
+            try {
+                const gaps = await getSkillGapApiWrapper();
+                const trends = await getSkillTrends();
+
+                if (mounted) {
+                    const formatTrends = (trendsList: any[]) => (trendsList || []).map(t => ({ ...t, name: formatSkillName(t.name) }));
+
+                    const formattedGaps = gaps
+                        .filter((g: any) => g.training_supply > 0)
+                        .map((g: any) => ({
+                            ...g,
+                            name: formatSkillName(g.skill),
+                            // Optional: applying a scaling factor just for visualization so the training_supply bar is visible next to high demand
+                            visualization_supply: g.training_supply * 10 
+                        }))
+                        .sort((a: any, b: any) => b.market_demand - a.market_demand)
+                        .slice(0, 10);
+
+                    setGapData(formattedGaps);
+                    setRisingData(formatTrends(trends.rising_skills));
+                    setDecliningData(formatTrends(trends.declining_skills));
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error("Error loading skills intelligence:", err);
+                if (mounted) setLoading(false);
+            }
+        };
+        loadData();
+        return () => { mounted = false; };
+    }, []);
+
+    if (loading) {
+        return <div className="p-8 text-center text-white">Loading skills intelligence...</div>;
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-8">
+                <h1 className="text-2xl font-bold text-white mb-1">Skills Intelligence</h1>
+                <p className="text-textSecondary text-sm">Monitor emerging skill requirements and track declining technologies.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                {/* Rising Skills list */}
+                <div className="card">
+                    <div className="flex items-center gap-2 mb-6">
+                        <Zap className="w-5 h-5 text-accent" />
+                        <h3 className="text-lg font-bold text-white">Top Rising Skills</h3>
+                    </div>
+                    {risingData.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No skill trend data available</div>
+                    ) : (
+                        <div className="space-y-4">
+                            {risingData.map((skill, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                                    <div className="font-medium text-white break-words max-w-[70%]">{skill.name}</div>
+                                    <div className="flex items-center gap-1 text-green-400 bg-green-400/10 px-2 py-1 rounded-md text-sm font-semibold shrink-0">
+                                        <ArrowUpRight className="w-4 h-4" /> {skill.growth}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Declining Skills list */}
+                <div className="card">
+                    <div className="flex items-center gap-2 mb-6">
+                        <ArrowDownRight className="w-5 h-5 text-red-500" />
+                        <h3 className="text-lg font-bold text-white">Top Declining Skills</h3>
+                    </div>
+                    {decliningData.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No skill trend data available</div>
+                    ) : (
+                        <div className="space-y-4">
+                            {decliningData.map((skill, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                                    <div className="font-medium text-textSecondary break-words max-w-[70%]">{skill.name}</div>
+                                    <div className="flex items-center gap-1 text-red-400 bg-red-400/10 px-2 py-1 rounded-md text-sm font-semibold shrink-0">
+                                        <ArrowDownRight className="w-4 h-4" /> {skill.decline}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Skill Gap Map */}
             <div className="card">
-              <h2 className="text-lg font-bold mb-4">Top Rising Skills</h2>
-              <div className="space-y-3">
-                {trends.rising_skills.slice(0, 5).map((skill, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-white/5 rounded">
-                    <span className="font-medium">{formatName(skill.name)}</span>
-                    <span className="text-sm px-2 py-1 rounded bg-green-900/30 text-green-400">{skill.growth}</span>
-                  </div>
-                ))}
-              </div>
+                <div className="mb-6">
+                    <h3 className="text-lg font-bold text-white">Market Skill Gap Map</h3>
+                    <p className="text-sm text-textSecondary">Comparing market demand against available training program outputs.</p>
+                </div>
+
+                <div className="overflow-x-auto overflow-y-hidden custom-scrollbar pb-4 rounded-lg">
+                    <div className="h-[400px] min-w-[2000px] bg-secondary/30 rounded-lg p-4">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={gapData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                                <XAxis
+                                    dataKey="name"
+                                    type="category"
+                                    stroke="#9ca3af"
+                                    fontSize={12}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickFormatter={(value) => truncateLabel(value)}
+                                    interval={0}
+                                    height={80}
+                                />
+                                <YAxis
+                                    type="number"
+                                    stroke="#9ca3af"
+                                    fontSize={12}
+                                    tickLine={false}
+                                    axisLine={false}
+                                />
+                                <RechartsTooltip
+                                    cursor={{ fill: '#ffffff05' }}
+                                    contentStyle={{ backgroundColor: '#111827', borderColor: '#ffffff10', borderRadius: '8px' }}
+                                    itemStyle={{ color: '#e5e7eb' }}
+                                    formatter={(value, _name, props) => [value, props.payload.skill]}
+                                />
+                                <Bar dataKey="market_demand" name="Market Demand" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="visualization_supply" name="Training Supply Index" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="flex justify-center flex-wrap gap-4 mt-6">
+                    <div className="flex items-center gap-2 text-sm text-textSecondary">
+                        <div className="w-3 h-3 rounded-full bg-blue-500"></div> Companies Demand
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-textSecondary">
+                        <div className="w-3 h-3 rounded-full bg-purple-500"></div> Training Supply
+                    </div>
+                </div>
             </div>
+        </div>
+    );
+};
 
-            <div className="card">
-              <h2 className="text-lg font-bold mb-4">Top Declining Skills</h2>
-              <div className="space-y-3">
-                {trends.declining_skills.slice(0, 5).map((skill, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-white/5 rounded">
-                    <span className="font-medium">{formatName(skill.name)}</span>
-                    <span className="text-sm px-2 py-1 rounded bg-red-900/30 text-red-400">{skill.decline}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </DataState>
-
-      <ChartCard title="Market Skill Gap Map">
-        <DataState loading={gapLoading} error={gapError}>
-          {!gap || gap.length === 0 ? (
-            <p className="text-textSecondary text-center py-4">No skill gap data available.</p>
-          ) : (
-            <div className="w-full overflow-x-auto">
-              <div className="min-w-[1200px] h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={gapSeries(gap)} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                    <XAxis dataKey="name" stroke="#9CA3AF" tick={<AxisTick />} interval={0} />
-                    <YAxis stroke="#9CA3AF" />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '4px', color: '#F9FAFB' }}
-                      formatter={(value, name, props) => {
-                        if (name === "Training Supply Index") {
-                          return [value, `Training Supply Index (Raw supply: ${props.payload.training_supply})`];
-                        }
-                        return [value, name];
-                      }}
-                    />
-                    <Legend verticalAlign="top" height={36} />
-                    <Bar dataKey="market_demand" name="Companies Demand" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="supplyIndex" name="Training Supply Index" fill="#EC4899" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-        </DataState>
-      </ChartCard>
-    </div>
-  );
-}
-
-
-
+export default SkillsIntelligence;

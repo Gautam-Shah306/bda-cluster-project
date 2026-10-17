@@ -1,123 +1,118 @@
-
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import ErrorBoundary from '../components/ErrorBoundary';
-import { 
-  LayoutDashboard, 
-  TrendingUp, 
-  Brain, 
-  ShieldAlert, 
-  UserSquare2, 
-  Map, 
-  MessageSquare, 
-  LogOut,
-  Activity
+import { Link, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import {
+    LayoutDashboard,
+    TrendingUp,
+    BrainCircuit,
+    ShieldAlert,
+    UserSquare2,
+    Route,
+    MessageSquare,
+    LogOut
 } from 'lucide-react';
-import { useAuth } from '../context';
 
-export default function DashboardLayout() {
-  const { user, logout } = useAuth();
-  const location = useLocation();
+const Sidebar = () => {
 
-  return (
-    <div className="flex h-screen bg-background text-textPrimary">
-      {/* Sidebar */}
-      <aside className="w-64 bg-secondary border-r border-gray-800 flex flex-col">
-        <div className="p-6">
-          <h1 className="text-xl font-bold text-accent">Skills Mirage</h1>
-        </div>
-        
-        <nav className="flex-1 overflow-y-auto py-4">
-          <div className="px-6 mb-2">
-            <h2 className="text-xs font-semibold text-textSecondary uppercase tracking-wider">
-              Core Intelligence
-            </h2>
-          </div>
-          <div className="space-y-1 mb-6">
-            <Link to="/dashboard" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <LayoutDashboard className="w-5 h-5 mr-3 text-gray-400" />
-              <span>Dashboard</span>
-            </Link>
-            <Link to="/dashboard/hiring-trends" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <TrendingUp className="w-5 h-5 mr-3 text-gray-400" />
-              <span>Hiring Trends</span>
-            </Link>
-            <Link to="/dashboard/skills" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <Brain className="w-5 h-5 mr-3 text-gray-400" />
-              <span>Skills Intelligence</span>
-            </Link>
-            <Link to="/dashboard/vulnerability" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <ShieldAlert className="w-5 h-5 mr-3 text-gray-400" />
-              <span>AI Vulnerability Index</span>
-            </Link>
-          </div>
+    const layer1Menu = [
+        { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+        { name: 'Hiring Trends', icon: TrendingUp, path: '/dashboard/hiring-trends' },
+        { name: 'Skills Intelligence', icon: BrainCircuit, path: '/dashboard/skills' },
+        { name: 'AI Vulnerability Index', icon: ShieldAlert, path: '/dashboard/vulnerability' },
+    ];
 
-          <div className="px-6 mb-2">
-            <h2 className="text-xs font-semibold text-textSecondary uppercase tracking-wider">
-              Worker Action
-            </h2>
-          </div>
-          <div className="space-y-1">
-            <Link to="/dashboard/worker" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <UserSquare2 className="w-5 h-5 mr-3 text-gray-400" />
-              <span>Worker Analysis</span>
-            </Link>
-            <Link to="/dashboard/reskilling" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <Map className="w-5 h-5 mr-3 text-gray-400" />
-              <span>Reskilling Paths</span>
-            </Link>
-            <Link to="/dashboard/chatbot" className="flex items-center px-6 py-2 hover:bg-gray-800 transition-colors">
-              <MessageSquare className="w-5 h-5 mr-3 text-gray-400" />
-              <span>AI Chatbot</span>
-            </Link>
-          </div>
-        </nav>
-        
-        <div className="p-4 border-t border-gray-800">
-          <button 
-            onClick={logout}
-            className="flex items-center w-full px-2 py-2 text-textSecondary hover:text-white transition-colors"
-          >
-            <LogOut className="w-5 h-5 mr-3" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
+    const layer2Menu = [
+        { name: 'Worker Analysis', icon: UserSquare2, path: '/dashboard/worker' },
+        { name: 'Reskilling Paths', icon: Route, path: '/dashboard/reskilling' },
+        { name: 'AI Chatbot', icon: MessageSquare, path: '/dashboard/chatbot' },
+    ];
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* TopBar */}
-        <header className="h-16 bg-secondary border-b border-gray-800 flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-              <Activity className="w-4 h-4 text-green-400" />
-              <span className="text-sm font-medium text-green-400">System Live</span>
+    return (
+        <aside className="w-64 bg-secondary border-r border-white/5 h-screen flex flex-col">
+            <div className="p-6">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <BrainCircuit className="text-accent" /> Skills Mirage
+                </h2>
             </div>
-            <span className="text-sm text-textSecondary font-medium px-3 py-1 bg-gray-800 rounded-full border border-gray-700">
-              Hackathon Demo
-            </span>
-          </div>
-          
-          <div className="flex items-center">
-            <span className="text-sm font-medium text-textPrimary">
-              {user?.name || "Administrator"}
-            </span>
-            <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center ml-3 font-bold">
-              {(user?.name || "A").charAt(0).toUpperCase()}
+
+            <div className="flex-1 overflow-y-auto py-4">
+                {/* Layer 1 */}
+                <div className="px-4 mb-6">
+                    <p className="text-xs font-semibold text-textSecondary uppercase tracking-wider mb-2 ml-2">Core Intelligence</p>
+                    <ul className="space-y-1">
+                        {layer1Menu.map((item) => (
+                            <li key={item.name}>
+                                <Link to={item.path} className="flex items-center gap-3 px-3 py-2 text-textSecondary hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                                    <item.icon className="w-5 h-5" />
+                                    <span>{item.name}</span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+
+                {/* Layer 2 */}
+                <div className="px-4 mb-6">
+                    <p className="text-xs font-semibold text-textSecondary uppercase tracking-wider mb-2 ml-2">Worker Action</p>
+                    <ul className="space-y-1">
+                        {layer2Menu.map((item) => (
+                            <li key={item.name}>
+                                <Link to={item.path} className="flex items-center gap-3 px-3 py-2 text-textSecondary hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                                    <item.icon className="w-5 h-5" />
+                                    <span>{item.name}</span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
-          </div>
+
+            <div className="p-4 border-t border-white/5">
+                <ul className="space-y-1">
+                    <li>
+                        <Link to="/" className="w-full flex items-center gap-3 px-3 py-2 text-textSecondary hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                            <LogOut className="w-5 h-5 rotate-180" />
+                            <span>Home</span>
+                        </Link>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+    );
+};
+
+const TopBar = () => {
+    const { user } = useAuth();
+    return (
+        <header className="h-16 bg-background/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 sticky top-0 z-20">
+            <div className="text-textSecondary">
+                {/* Breadcrumb replacement / Status */}
+                <span className="bg-accent/10 text-accent text-xs px-2 py-1 rounded-full border border-accent/20">System Live</span>
+            </div>
+            <div className="flex items-center gap-4">
+                <div className="text-sm text-right">
+                    <p className="text-white font-medium">{user?.name || 'Administrator'}</p>
+                    <p className="text-textSecondary text-xs">Hackathon Demo</p>
+                </div>
+                <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-accent to-purple-500 overflow-hidden border border-white/20"></div>
+            </div>
         </header>
-        
-        {/* Scrollable Page Area */}
-        <div className="flex-1 overflow-auto p-8">
-          <div className="max-w-7xl mx-auto">
-            <ErrorBoundary resetKey={location.pathname}>
-              <Outlet />
-            </ErrorBoundary>
-          </div>
+    );
+};
+
+const DashboardLayout = () => {
+    return (
+        <div className="flex h-screen bg-background text-textPrimary overflow-hidden">
+            <Sidebar />
+            <div className="flex-1 flex flex-col h-screen overflow-hidden">
+                <TopBar />
+                <main className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                    <div className="max-w-7xl mx-auto">
+                        <Outlet />
+                    </div>
+                </main>
+            </div>
         </div>
-      </main>
-    </div>
-  );
-}
+    );
+};
 
-
+export default DashboardLayout;
