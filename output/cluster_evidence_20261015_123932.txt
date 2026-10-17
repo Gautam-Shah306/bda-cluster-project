@@ -1,0 +1,144 @@
+
+### hdfs dfsadmin -report
+log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).
+log4j:WARN Please initialize the log4j system properly.
+log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+Configured Capacity: 2162202353664 (1.97 TB)
+Present Capacity: 2022436200448 (1.84 TB)
+DFS Remaining: 2022436151296 (1.84 TB)
+DFS Used: 49152 (48 KB)
+DFS Used%: 0.00%
+Replicated Blocks:
+	Under replicated blocks: 0
+	Blocks with corrupt replicas: 0
+	Missing blocks: 0
+	Missing blocks (with replication factor 1): 0
+	Low redundancy blocks with highest priority to recover: 0
+	Pending deletion blocks: 0
+Erasure Coded Block Groups: 
+	Low redundancy block groups: 0
+	Block groups with corrupt internal blocks: 0
+	Missing block groups: 0
+	Low redundancy blocks with highest priority to recover: 0
+	Pending deletion blocks: 0
+
+-------------------------------------------------
+Live datanodes (2):
+
+Name: 172.18.0.7:9866 (hdp-worker1.cluster_default)
+Hostname: hdp-worker1
+Decommission Status : Normal
+Configured Capacity: 1081101176832 (1006.85 GB)
+DFS Used: 24576 (24 KB)
+Non DFS Used: 14890721280 (13.87 GB)
+DFS Remaining: 1011218075648 (941.77 GB)
+DFS Used%: 0.00%
+DFS Remaining%: 93.54%
+Configured Cache Capacity: 0 (0 B)
+Cache Used: 0 (0 B)
+Cache Remaining: 0 (0 B)
+Cache Used%: 100.00%
+Cache Remaining%: 0.00%
+Xceivers: 0
+Last contact: Thu Oct 15 07:09:36 UTC 2026
+Last Block Report: Thu Oct 15 07:09:15 UTC 2026
+Num of Blocks: 0
+
+
+Name: 172.18.0.8:9866 (hdp-worker2.cluster_default)
+Hostname: hdp-worker2
+Decommission Status : Normal
+Configured Capacity: 1081101176832 (1006.85 GB)
+DFS Used: 24576 (24 KB)
+Non DFS Used: 14890721280 (13.87 GB)
+DFS Remaining: 1011218075648 (941.77 GB)
+DFS Used%: 0.00%
+DFS Remaining%: 93.54%
+Configured Cache Capacity: 0 (0 B)
+Cache Used: 0 (0 B)
+Cache Remaining: 0 (0 B)
+Cache Used%: 100.00%
+Cache Remaining%: 0.00%
+Xceivers: 0
+Last contact: Thu Oct 15 07:09:36 UTC 2026
+Last Block Report: Thu Oct 15 07:09:15 UTC 2026
+Num of Blocks: 0
+
+
+
+### yarn node -list -all
+log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).
+log4j:WARN Please initialize the log4j system properly.
+log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+Total Nodes:0
+         Node-Id	     Node-State	Node-Http-Address	Number-of-Running-Containers
+
+### hdfs dfs -mkdir -p /skills_mirage/smoke_files
+log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).
+log4j:WARN Please initialize the log4j system properly.
+log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+
+### head -c 31457280 /dev/urandom > /tmp/blocks.bin && hdfs dfs -put -f /tmp/blocks.bin /skills_mirage/smoke_files/blocks.bin
+log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).
+log4j:WARN Please initialize the log4j system properly.
+log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+
+### hdfs fsck /skills_mirage/smoke_files/blocks.bin -files -blocks -locations
+log4j:WARN No appenders could be found for logger (org.apache.hadoop.metrics2.lib.MutableMetricsFactory).
+log4j:WARN Please initialize the log4j system properly.
+log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+Connecting to namenode via http://hdp-master:9870/fsck?ugi=root&files=1&blocks=1&locations=1&path=%2Fskills_mirage%2Fsmoke_files%2Fblocks.bin
+FSCK started by root (auth:SIMPLE) from /172.18.0.4 for path /skills_mirage/smoke_files/blocks.bin at Thu Oct 15 07:10:02 UTC 2026
+
+/skills_mirage/smoke_files/blocks.bin 31457280 bytes, replicated: replication=2, 4 block(s):  OK
+0. BP-101838170-172.18.0.4-1792048123939:blk_1073741825_1001 len=8388608 Live_repl=2  [DatanodeInfoWithStorage[172.18.0.7:9866,DS-1ba5561e-19bb-4312-b305-0a17bfe32462,DISK], DatanodeInfoWithStorage[172.18.0.8:9866,DS-aa0b1650-d522-4358-97a0-939754137a38,DISK]]
+1. BP-101838170-172.18.0.4-1792048123939:blk_1073741826_1002 len=8388608 Live_repl=2  [DatanodeInfoWithStorage[172.18.0.8:9866,DS-aa0b1650-d522-4358-97a0-939754137a38,DISK], DatanodeInfoWithStorage[172.18.0.7:9866,DS-1ba5561e-19bb-4312-b305-0a17bfe32462,DISK]]
+2. BP-101838170-172.18.0.4-1792048123939:blk_1073741827_1003 len=8388608 Live_repl=2  [DatanodeInfoWithStorage[172.18.0.8:9866,DS-aa0b1650-d522-4358-97a0-939754137a38,DISK], DatanodeInfoWithStorage[172.18.0.7:9866,DS-1ba5561e-19bb-4312-b305-0a17bfe32462,DISK]]
+3. BP-101838170-172.18.0.4-1792048123939:blk_1073741828_1004 len=6291456 Live_repl=2  [DatanodeInfoWithStorage[172.18.0.8:9866,DS-aa0b1650-d522-4358-97a0-939754137a38,DISK], DatanodeInfoWithStorage[172.18.0.7:9866,DS-1ba5561e-19bb-4312-b305-0a17bfe32462,DISK]]
+
+
+Status: HEALTHY
+ Number of data-nodes:	2
+ Number of racks:		1
+ Total dirs:			0
+ Total symlinks:		0
+
+Replicated Blocks:
+ Total size:	31457280 B
+ Total files:	1
+ Total blocks (validated):	4 (avg. block size 7864320 B)
+ Minimally replicated blocks:	4 (100.0 %)
+ Over-replicated blocks:	0 (0.0 %)
+ Under-replicated blocks:	0 (0.0 %)
+ Mis-replicated blocks:		0 (0.0 %)
+ Default replication factor:	2
+ Average block replication:	2.0
+ Missing blocks:		0
+ Corrupt blocks:		0
+ Missing replicas:		0 (0.0 %)
+ Blocks queued for replication:	0
+
+Erasure Coded Block Groups:
+ Total size:	0 B
+ Total files:	0
+ Total block groups (validated):	0
+ Minimally erasure-coded block groups:	0
+ Over-erasure-coded block groups:	0
+ Under-erasure-coded block groups:	0
+ Unsatisfactory placement block groups:	0
+ Average block group size:	0.0
+ Missing block groups:		0
+ Corrupt block groups:		0
+ Missing internal blocks:	0
+ Blocks queued for replication:	0
+FSCK ended at Thu Oct 15 07:10:02 UTC 2026 in 40 milliseconds
+
+
+The filesystem under path '/skills_mirage/smoke_files/blocks.bin' is HEALTHY
+
+### cd /workspace && PIPELINE_MODE=cluster python scripts/smoke_cluster.py
+Traceback (most recent call last):
+  File "/workspace/scripts/smoke_cluster.py", line 11, in <module>
+    from src.common.config import get_mode, get_path  # noqa: E402
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'src.common.config'
