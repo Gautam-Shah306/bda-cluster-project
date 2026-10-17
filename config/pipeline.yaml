@@ -1,21 +1,28 @@
+# Skills Mirage pipeline configuration
+# mode is overridden by the PIPELINE_MODE environment variable if set.
 mode: local
+
 local:
   root: dataset
+
 cluster:
   root: hdfs://hdp-master:9000/skills_mirage
   spark_master: yarn
+
 spark:
-  app_name: SkillsMirage
-  local_master: "local[*]"
-  shuffle_partitions: 2
+  driver_memory: 2g
+  executor_memory: 2g
+  sql_shuffle_partitions: 8
+
 paths:
-  raw/jobs: raw/jobs
-  raw/courses: raw/courses
-  raw/scraped_jobs: raw/scraped_jobs
-  raw/scraped_courses: raw/scraped_courses
-  processed/jobs: processed/jobs
-  processed/courses: processed/courses
+  raw_jobs: raw/jobs
+  raw_courses: raw/courses
+  raw_scraped_jobs: raw/scraped_jobs
+  raw_scraped_courses: raw/scraped_courses
+  processed_jobs: processed/jobs
+  processed_courses: processed/courses
   analytics: analytics
-  smoke_test: smoke_test
+  smoke_test: analytics/smoke_test
+
 hive:
   database: skills_mirage
