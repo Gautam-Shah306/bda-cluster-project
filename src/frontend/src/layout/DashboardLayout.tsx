@@ -5,9 +5,6 @@ import {
     TrendingUp,
     BrainCircuit,
     ShieldAlert,
-    UserSquare2,
-    Route,
-    MessageSquare,
     LogOut
 } from 'lucide-react';
 
@@ -18,12 +15,6 @@ const Sidebar = () => {
         { name: 'Hiring Trends', icon: TrendingUp, path: '/dashboard/hiring-trends' },
         { name: 'Skills Intelligence', icon: BrainCircuit, path: '/dashboard/skills' },
         { name: 'AI Vulnerability Index', icon: ShieldAlert, path: '/dashboard/vulnerability' },
-    ];
-
-    const layer2Menu = [
-        { name: 'Worker Analysis', icon: UserSquare2, path: '/dashboard/worker' },
-        { name: 'Reskilling Paths', icon: Route, path: '/dashboard/reskilling' },
-        { name: 'AI Chatbot', icon: MessageSquare, path: '/dashboard/chatbot' },
     ];
 
     return (
@@ -40,21 +31,6 @@ const Sidebar = () => {
                     <p className="text-xs font-semibold text-textSecondary uppercase tracking-wider mb-2 ml-2">Core Intelligence</p>
                     <ul className="space-y-1">
                         {layer1Menu.map((item) => (
-                            <li key={item.name}>
-                                <Link to={item.path} className="flex items-center gap-3 px-3 py-2 text-textSecondary hover:text-white hover:bg-white/5 rounded-lg transition-colors">
-                                    <item.icon className="w-5 h-5" />
-                                    <span>{item.name}</span>
-                                </Link>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-
-                {/* Layer 2 */}
-                <div className="px-4 mb-6">
-                    <p className="text-xs font-semibold text-textSecondary uppercase tracking-wider mb-2 ml-2">Worker Action</p>
-                    <ul className="space-y-1">
-                        {layer2Menu.map((item) => (
                             <li key={item.name}>
                                 <Link to={item.path} className="flex items-center gap-3 px-3 py-2 text-textSecondary hover:text-white hover:bg-white/5 rounded-lg transition-colors">
                                     <item.icon className="w-5 h-5" />
